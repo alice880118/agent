@@ -21,6 +21,8 @@ backdrop seen through it.
 5. **Background.** The exit ray is intersected exactly with the backdrop plane. The texture is sampled with a mip level that grows with distance, so frosted glass blurs far things more than near ones.
 6. **Energy.** Schlick Fresnel at both surfaces, thin-film interference on the reflection, Beer–Lambert absorption, and in-scattering, all along the path length.
 
+**Performance:** the scene redraws only when something changes. While moving it uses 3 frost samples instead of 8, and an adaptive resolution (50–100 % of a pixel ratio capped at 1.5) holds the frame rate. The exit search runs once per pixel, and the back-face pass renders at half resolution. A settled frame always renders at full quality.
+
 **Known approximations:** only the first exit surface is found (rays that leave the glass and re-enter it are not followed), the studio light is procedural, and the backdrop is a single plane.
 
 ## Blender
