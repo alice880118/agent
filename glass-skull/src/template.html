@@ -136,8 +136,12 @@ const statusEl = $('status');
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- Renderer, scene, camera ---------- */
-const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: true });   // keep the last frame when idle
+// Rendering cost grows with pixel count, so cap the pixel ratio and let
+// the quality controller below scale it further on slower GPUs.
+const MAX_DPR = Math.min(devicePixelRatio, 1.5);
+renderer.setPixelRatio(MAX_DPR);
+let dirty = true;                               // something changed: draw a frame
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.NeutralToneMapping;
 $('stage').appendChild(renderer.domElement);
@@ -189,6 +193,7 @@ function drawBackdrop() {
     for (const [ch, x, y] of [['A', cx - H * 0.22, H * 0.26], ['T', cx + H * 0.3, H * 0.3], ['E', cx - H * 0.26, H * 0.8], ['Q', cx + H * 0.24, H * 0.78]]) g.fillText(ch, x, y);
   }
   backTex.needsUpdate = true;
+  dirty = true;
   const h = 2 * -PLANE_Z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
   planeSize.set(h * aspect * 1.02, h * 1.02);
   backdrop.scale.set(planeSize.x, planeSize.y, 1);
@@ -219,6 +224,7 @@ const glassUniforms = {
   uMilk: { value: 0.35 },
   uSigma: { value: new THREE.Vector3() },
   uFilm: { value: 0.6 },
+  uSamples: { value: 8 },
 };
 const glassMat = new THREE.ShaderMaterial({
   uniforms: glassUniforms,
@@ -234,7 +240,8 @@ const glassMat = new THREE.ShaderMaterial({
     uniform vec3 uSigma;
     varying vec3 vP; varying vec3 vN;
 
-    const int FROST_SAMPLES = 8;
+    const int MAX_SAMPLES = 8;
+    uniform int uSamples;                     // 8 when still, fewer while moving
     const int STEPS = 18;
 
     vec2 toUv(vec3 p) { vec4 c = uProj * vec4(p, 1.0); return c.xy / c.w * 0.5 + 0.5; }
@@ -294,15 +301,48 @@ const glassMat = new THREE.ShaderMaterial({
       if (!front) N = -N;                       // seen through an opening in the scan
       vec2 uvPix = gl_FragCoord.xy / uRes;
       float a = uRough * uRough * 0.9;          // cone half-width of scattered normals
-      float spread = a * 0.35;                  // residual blur between samples
+      float spread = a * 0.35 + 0.004;          // residual blur between samples
 
       float dIor = (uIor - 1.0) / uAbbe;        // n_F - n_C
       vec3 iors = vec3(uIor - 0.3 * dIor, uIor, uIor + 0.7 * dIor);
 
+      // Find the exit once per pixel along the smooth refracted ray. The frost
+      // samples below share it; their small normal tilts barely move the exit,
+      // and this keeps the expensive depth search out of the sample loop.
+      vec3 T0 = refract(V, N, 1.0 / uIor);
+      vec3 pExit = vP + T0 * 0.03;
+      vec3 nOut = T0;
+      if (front) {
+        vec4 b0 = texture2D(tBack, uvPix);
+        float L = b0.a > 0.0 ? clamp((b0.a + vP.z) * 2.2, 0.06, 4.0) : 0.12;
+        float dt = L / float(STEPS);
+        vec3 p = vP, prev = vP;
+        for (int i = 0; i < STEPS; i++) {
+          p += T0 * dt;
+          vec4 b = texture2D(tBack, toUv(p));
+          if (b.a <= 0.0 || -p.z >= b.a) break;
+          prev = p;
+        }
+        for (int i = 0; i < 4; i++) {
+          vec3 m = 0.5 * (prev + p);
+          vec4 b = texture2D(tBack, toUv(m));
+          if (b.a <= 0.0 || -m.z >= b.a) p = m; else prev = m;
+        }
+        vec4 bh = texture2D(tBack, toUv(p));
+        pExit = p;
+        if (bh.a > 0.0) nOut = normalize(bh.rgb);
+      }
+      float path = length(pExit - vP);
+      vec3 absorb = exp(-uSigma * path);
+      float scat = 1.0 - exp(-uMilk * path * 2.0);
+      vec3 inScatter = scat > 0.001 ? envLight(-N, 1.0) * 0.55 + envLight(N, 1.0) * 0.25 : vec3(0.0);
+
       vec3 acc = vec3(0.0);
       float jit = ign(gl_FragCoord.xy);
-      for (int s = 0; s < FROST_SAMPLES; s++) {
-        vec2 xi = fract(vec2(jit + float(s) / float(FROST_SAMPLES), jit * 7.31 + float(s) * 0.618));
+      float fs = float(uSamples);
+      for (int s = 0; s < MAX_SAMPLES; s++) {
+        if (s >= uSamples) break;
+        vec2 xi = fract(vec2(jit + float(s) / fs, jit * 7.31 + float(s) * 0.618));
         vec3 n1 = microNormal(N, a, xi);
         float cosI = max(dot(-V, n1), 0.0);
 
@@ -310,35 +350,10 @@ const glassMat = new THREE.ShaderMaterial({
         vec3 F = fresnel(cosI, uIor) * thinFilm(cosI);
         vec3 refl = envLight(reflect(V, normalize(mix(N, n1, 0.35))), uRough * 0.4);
 
-        // Into the glass (mean index), march to the back surface.
-        vec3 T1 = refract(V, n1, 1.0 / uIor);
-        vec3 pExit = vP + T1 * 0.03;
-        vec3 nOut = T1;
-        if (front) {
-          vec4 b0 = texture2D(tBack, uvPix);
-          float L = b0.a > 0.0 ? clamp((b0.a + vP.z) * 2.2, 0.06, 4.0) : 0.12;
-          float dt = L / float(STEPS);
-          vec3 p = vP, prev = vP;
-          for (int i = 0; i < STEPS; i++) {
-            p += T1 * dt;
-            vec4 b = texture2D(tBack, toUv(p));
-            if (b.a <= 0.0 || -p.z >= b.a) break;
-            prev = p;
-          }
-          for (int i = 0; i < 5; i++) {
-            vec3 m = 0.5 * (prev + p);
-            vec4 b = texture2D(tBack, toUv(m));
-            if (b.a <= 0.0 || -m.z >= b.a) p = m; else prev = m;
-          }
-          vec4 bh = texture2D(tBack, toUv(p));
-          pExit = p;
-          if (bh.a > 0.0) nOut = normalize(bh.rgb);
-        }
-        float path = length(pExit - vP);
-
         // Out of the glass: second refraction, per wavelength.
-        vec2 xi2 = fract(xi.yx * 1.7 + 0.37);
-        vec3 n2 = microNormal(nOut, a, xi2);
+        vec3 n2 = microNormal(nOut, a, fract(xi.yx * 1.7 + 0.37));
+        vec3 Tg = refract(V, n1, 1.0 / iors.y);
+        vec3 inner = envLight(reflect(Tg, -n2), uRough);   // light bounced back inside
         vec3 col;
         for (int c = 0; c < 3; c++) {
           float n = iors[c];
@@ -346,23 +361,17 @@ const glassMat = new THREE.ShaderMaterial({
           vec3 T2 = refract(T1c, -n2, n);
           vec3 o;
           if (dot(T2, T2) < 1e-4) {
-            // Total internal reflection: the light bounces and escapes toward the room.
-            o = envLight(reflect(T1c, -n2), uRough) * 0.85;
+            o = inner * 0.85;                     // total internal reflection
           } else {
             float Fb = fresnel(max(dot(T1c, n2), 0.0), n);
-            o = sampleOut(pExit, T2, spread) * (1.0 - Fb) + envLight(reflect(T1c, -n2), uRough) * Fb * 0.5;
+            o = sampleOut(pExit, T2, spread) * (1.0 - Fb) + inner * Fb * 0.5;
           }
           col[c] = o[c];
         }
-        // Beer–Lambert absorption and in-scattering along the path inside.
-        col *= exp(-uSigma * path);
-        float scat = 1.0 - exp(-uMilk * path * 2.0);
-        vec3 inScatter = envLight(-N, 1.0) * 0.55 + envLight(N, 1.0) * 0.25;
-        col = mix(col, inScatter, scat);
-
+        col = mix(col * absorb, inScatter, scat);
         acc += refl * F + col * (1.0 - F);
       }
-      gl_FragColor = vec4(acc / float(FROST_SAMPLES), 1.0);
+      gl_FragColor = vec4(acc / fs, 1.0);
     }`,
 });
 
@@ -395,11 +404,12 @@ function setGeometry(geo) {
   backMesh = new THREE.Mesh(geo, backMat);
   backMesh.layers.set(1);                       // only drawn in the back-face pass
   holder.add(mesh, backMesh);
+  dirty = true;
 }
 
 /* ---------- Post: subtle lens fringe + film grain ---------- */
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
-composer.setPixelRatio(renderer.getPixelRatio());
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 2 }));
+composer.setPixelRatio(MAX_DPR);
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new OutputPass());
 const lensPass = new ShaderPass({
@@ -425,7 +435,7 @@ composer.addPass(lensPass);
 /* ---------- Controls panel ---------- */
 const bind = (id, fn, digits = 2) => {
   const el = $(id), out = document.querySelector(`output[for="${id}"]`);
-  const apply = () => { const v = parseFloat(el.value); if (out) out.textContent = v.toFixed(digits); fn(v); };
+  const apply = () => { const v = parseFloat(el.value); if (out) out.textContent = v.toFixed(digits); fn(v); dirty = true; };
   el.addEventListener('input', apply); apply();
 };
 // Absorption: a faint lavender tint, as attenuation per unit of path length.
@@ -439,7 +449,7 @@ bind('film', (v) => { glassUniforms.uFilm.value = v; });
 bind('fringe', (v) => { lensPass.uniforms.uCA.value = v; });
 bind('grain', (v) => { lensPass.uniforms.uGrain.value = v; });
 $('autorotate').checked = !reduceMotion;
-$('autorotate').addEventListener('change', (e) => { controls.autoRotate = e.target.checked; });
+$('autorotate').addEventListener('change', (e) => { controls.autoRotate = e.target.checked; dirty = true; });
 $('letters').addEventListener('change', (e) => { showLetters = e.target.checked; drawBackdrop(); });
 
 $('copy').addEventListener('click', async () => {
@@ -491,6 +501,7 @@ addEventListener('dragleave', (e) => { if (!e.relatedTarget) drop.hidden = true;
 addEventListener('drop', (e) => { e.preventDefault(); drop.hidden = true; loadFile(e.dataTransfer.files[0]); });
 
 /* ---------- Resize + loop ---------- */
+const BACK_SCALE = 0.5;
 function onResize() {
   camera.aspect = innerWidth / innerHeight;
   camera.fov = camera.aspect < 1 ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(15)) * 0.8 / camera.aspect)) : 30;
@@ -498,7 +509,7 @@ function onResize() {
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
   const buf = renderer.getDrawingBufferSize(new THREE.Vector2());
-  backRT.setSize(buf.x, buf.y);
+  backRT.setSize(Math.ceil(buf.x * BACK_SCALE), Math.ceil(buf.y * BACK_SCALE));   // depth/normal pass at half resolution
   glassUniforms.uRes.value.copy(buf);
   lensPass.uniforms.uRes.value.copy(buf);
   drawBackdrop();
@@ -517,19 +528,61 @@ function renderBackFaces() {
   renderer.setRenderTarget(null);
   camera.layers.set(0);
 }
+/* ---------- Quality controller ----------
+   - Draw only when something changed (camera, slider, resize). A still
+     scene costs nothing, so the page stays responsive.
+   - While dragging or auto-rotating, trace fewer frost samples; when the
+     view settles, draw one full-quality frame.
+   - Watch the real frame time and lower or raise the resolution to hold
+     about 60 fps on whatever GPU this runs on. */
+let interacting = false, settleTimer = 0, renderScale = 1;
+controls.addEventListener('start', () => { interacting = true; clearTimeout(settleTimer); });
+controls.addEventListener('end', () => { settleTimer = setTimeout(() => { interacting = false; dirty = true; }, 180); });
+controls.addEventListener('change', () => { dirty = true; });
+
+let frameAcc = 0, frameCount = 0, lastFrame = performance.now(), lastAdjust = performance.now();
+function adaptResolution(now) {
+  if (now - lastAdjust < 700 || frameCount < 8) return;
+  const avg = frameAcc / frameCount;
+  frameAcc = 0; frameCount = 0; lastAdjust = now;
+  let next = renderScale;
+  if (avg > 24 && renderScale > 0.5) next = Math.max(0.5, renderScale * 0.8);
+  else if (avg < 13 && renderScale < 1) next = Math.min(1, renderScale * 1.12);
+  if (Math.abs(next - renderScale) > 0.01) renderScale = next;
+}
+// Moving frames use the adaptive scale; a settled frame is always full resolution.
+let appliedScale = 1;
+function applyScale(scale) {
+  if (scale === appliedScale) return;
+  appliedScale = scale;
+  renderer.setPixelRatio(MAX_DPR * scale);
+  composer.setPixelRatio(MAX_DPR * scale);
+  onResize();
+}
+
 renderer.setAnimationLoop(() => {
+  const now = performance.now();
+  const moving = controls.update() || controls.autoRotate || interacting;
+  if (!moving && !dirty) { lastFrame = now; return; }
+  frameAcc += now - lastFrame; frameCount++; lastFrame = now;
+
+  applyScale(moving ? renderScale : 1);
+  glassUniforms.uSamples.value = moving ? 3 : 8;
   lensPass.uniforms.uTime.value = reduceMotion ? 0 : clock.getElapsedTime();
-  controls.update();
   camera.updateMatrixWorld();
   renderBackFaces();
   composer.render();
+  dirty = false;
+  if (moving) adaptResolution(now);
 });
+document.addEventListener('visibilitychange', () => { lastFrame = performance.now(); frameAcc = 0; frameCount = 0; });
+
 
 let skullLabel = '';
 skullGeo = decodeSkull();
 setGeometry(skullGeo);
 skullLabel = `Skull · ${(skullGeo.index.count / 3).toLocaleString()} tris · Babylon.js Assets, CC BY 4.0`;
 statusEl.textContent = skullLabel;
-window.__app = { camera, controls, glassUniforms };
+window.__app = { camera, controls, glassUniforms, renderer, quality: () => ({ renderScale, samples: glassUniforms.uSamples.value }) };
 window.__ready = 1;
 </script>
