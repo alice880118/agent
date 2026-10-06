@@ -62,7 +62,6 @@ pre.py { margin: 0; max-height: 220px; overflow: auto; background: rgba(18,18,22
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
 </style>
 
-
 <div id="stage"></div>
 <svg id="hud" aria-hidden="true"></svg>
 
@@ -73,22 +72,27 @@ pre.py { margin: 0; max-height: 220px; overflow: auto; background: rgba(18,18,22
 
 <aside class="panel" aria-label="Glass controls">
   <details open>
-    <summary>Glass</summary>
+    <summary>Frosted glass</summary>
     <div class="body">
-      <div class="row"><label for="roughness">Frost</label><output for="roughness"></output><input id="roughness" type="range" min="0" max="0.8" step="0.01" value="0.22"></div>
-      <div class="row"><label for="thickness">Thickness</label><output for="thickness"></output><input id="thickness" type="range" min="0" max="4" step="0.05" value="2.4"></div>
-      <div class="row"><label for="ior">Index of refraction</label><output for="ior"></output><input id="ior" type="range" min="1" max="2.3" step="0.01" value="1.55"></div>
-      <div class="row"><label for="dispersion">Dispersion</label><output for="dispersion"></output><input id="dispersion" type="range" min="0" max="10" step="0.1" value="3.5"></div>
-      <div class="row"><label for="milk">Milkiness</label><output for="milk"></output><input id="milk" type="range" min="0" max="0.6" step="0.01" value="0.1"></div>
-      <div class="row"><label for="iridescence">Iridescence</label><output for="iridescence"></output><input id="iridescence" type="range" min="0" max="1" step="0.01" value="0.55"></div>
-      <div class="row"><label for="fringe">Lens fringe</label><output for="fringe"></output><input id="fringe" type="range" min="0" max="1" step="0.01" value="0.1"></div>
-      <div class="row"><label for="grain">Grain</label><output for="grain"></output><input id="grain" type="range" min="0" max="1" step="0.01" value="0.45"></div>
+      <div class="row"><label for="roughness">Frost (surface roughness)</label><output for="roughness"></output><input id="roughness" type="range" min="0" max="1" step="0.01" value="0.3"></div>
+      <div class="row"><label for="ior">Index of refraction</label><output for="ior"></output><input id="ior" type="range" min="1" max="2" step="0.01" value="1.5"></div>
+      <div class="row"><label for="abbe">Abbe number (lower = more dispersion)</label><output for="abbe"></output><input id="abbe" type="range" min="8" max="90" step="1" value="20"></div>
+      <div class="row"><label for="milk">Internal scattering</label><output for="milk"></output><input id="milk" type="range" min="0" max="1.5" step="0.01" value="0.1"></div>
+      <div class="row"><label for="absorb">Absorption</label><output for="absorb"></output><input id="absorb" type="range" min="0" max="1" step="0.01" value="0.25"></div>
+      <div class="row"><label for="film">Thin-film iridescence</label><output for="film"></output><input id="film" type="range" min="0" max="1" step="0.01" value="0.6"></div>
+      <div class="row"><label for="fringe">Lens fringe</label><output for="fringe"></output><input id="fringe" type="range" min="0" max="1" step="0.01" value="0.08"></div>
+      <div class="row"><label for="grain">Grain</label><output for="grain"></output><input id="grain" type="range" min="0" max="1" step="0.01" value="0.4"></div>
       <div class="checks">
         <label><input id="autorotate" type="checkbox" checked> Auto-rotate</label>
         <label><input id="callouts" type="checkbox" checked> Callouts</label>
         <label><input id="letters" type="checkbox" checked> Blackletter</label>
-        <label><input id="inner" type="checkbox"> Inner walls</label>
       </div>
+    </div>
+  </details>
+  <details>
+    <summary>How the light is traced</summary>
+    <div class="body">
+      <p class="note">Each pixel follows light through the glass. It refracts at the front surface with Snell’s law, travels through the skull’s real thickness (measured from a back-face depth pass), and refracts again on the way out, or reflects internally when the angle is past the critical angle. Then it hits the backdrop plane. Red, green and blue use different indices from the Abbe number, so edges split into colour. Fresnel sets how much is reflected at each surface. Absorption and scattering grow with the path length inside. Frost is modelled as a sandblasted surface: micro-facet normals scatter each ray into a cone, so the backdrop blurs more the farther it is from the glass.</p>
     </div>
   </details>
   <details>
@@ -104,7 +108,7 @@ pre.py { margin: 0; max-height: 220px; overflow: auto; background: rgba(18,18,22
   <details>
     <summary>Blender material</summary>
     <div class="body">
-      <p class="note">Select your mesh in Blender 4.2+, open Scripting, paste and run. It sets up the same glass in Cycles (rough transmission, dispersion, thin-film) and a grey backdrop with large black letters behind the object, so the refraction has something to bend.</p>
+      <p class="note">Select your mesh in Blender 4.2+, open Scripting, paste and run. Cycles path-traces the same glass (rough transmission, dispersion, thin-film) and the script can add a grey backdrop with large black letters behind the object for it to refract.</p>
       <div class="btns"><button id="copy" type="button">Copy Python script</button></div>
       <pre class="py" id="py" tabindex="0">&quot;&quot;&quot;
 Frosted Holo Glass - Blender material setup
@@ -396,7 +400,6 @@ main()
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -409,7 +412,7 @@ const statusEl = $('status');
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- Renderer, scene, camera ---------- */
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.NeutralToneMapping;
@@ -417,35 +420,28 @@ $('stage').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 60);
-camera.position.set(4.4, 0.5, 1.9);
+camera.position.set(3.2, 0.6, 3.4);
 scene.add(camera);
-
-const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.02).texture;
-scene.environmentIntensity = 0.55;
-
-const key = new THREE.DirectionalLight(0xffffff, 2.0); key.position.set(-3, 4, 3); scene.add(key);
-const rimL = new THREE.DirectionalLight(0xa58bff, 2.0); rimL.position.set(2, 1.5, -4); scene.add(rimL);
-const fill = new THREE.DirectionalLight(0xcde8ff, 0.8); fill.position.set(3, -2, 2); scene.add(fill);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.enablePan = false;
 controls.minDistance = 2.6;
-controls.maxDistance = 9;
+controls.maxDistance = 5.8;
 controls.autoRotate = !reduceMotion;
 controls.autoRotateSpeed = 0.8;
-controls.target.set(0, 0, 0);
 
-/* ---------- Backdrop: grid + blackletter, glued to the camera.
-   It is an ordinary opaque mesh, so the glass refracts it for real. ---------- */
+/* ---------- Backdrop: grid + blackletter on a plane glued to the camera.
+   The glass shader intersects refracted rays with this plane exactly. ---------- */
+const PLANE_Z = -6.6;            // ~2 units behind the skull, like a print on the studio wall
 const backCanvas = document.createElement('canvas');
 const backTex = new THREE.CanvasTexture(backCanvas);
 backTex.colorSpace = THREE.SRGBColorSpace;
-backTex.anisotropy = 4;
+backTex.anisotropy = 8;
 const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: backTex }));
-backdrop.position.z = -9;
+backdrop.position.z = PLANE_Z;
 camera.add(backdrop);
+const planeSize = new THREE.Vector2(1, 1);
 let showLetters = true;
 
 function drawBackdrop() {
@@ -455,48 +451,195 @@ function drawBackdrop() {
   const g = backCanvas.getContext('2d');
   g.fillStyle = '#e1e1e4'; g.fillRect(0, 0, W, H);
   const cell = H / 34;
-  g.strokeStyle = 'rgba(18,18,22,0.08)'; g.lineWidth = 1.5;
+  g.strokeStyle = 'rgba(18,18,22,0.09)'; g.lineWidth = 1.5;
   g.beginPath();
   for (let x = (W / 2) % cell; x < W; x += cell) { g.moveTo(x, 0); g.lineTo(x, H); }
   for (let y = (H / 2) % cell; y < H; y += cell) { g.moveTo(0, y); g.lineTo(W, y); }
   g.stroke();
   if (showLetters) {
-    // Letters cross behind the skull so the glass has dark shapes to bend.
     g.fillStyle = '#111114';
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.font = `${H * 0.78}px "UnifrakturMaguntia", serif`;
     const cx = W / 2;
-    const glyphs = [['A', cx - H * 0.36, H * 0.2], ['T', cx + H * 0.34, H * 0.24], ['E', cx - H * 0.3, H * 0.86], ['Q', cx + H * 0.36, H * 0.84]];
-    for (const [ch, x, y] of glyphs) g.fillText(ch, x, y);
+    for (const [ch, x, y] of [['A', cx - H * 0.22, H * 0.26], ['T', cx + H * 0.3, H * 0.3], ['E', cx - H * 0.26, H * 0.8], ['Q', cx + H * 0.24, H * 0.78]]) g.fillText(ch, x, y);
   }
   backTex.needsUpdate = true;
-  const dist = -backdrop.position.z;
-  const h = 2 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-  backdrop.scale.set(h * aspect * 1.02, h * 1.02, 1);
+  const h = 2 * -PLANE_Z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  planeSize.set(h * aspect * 1.02, h * 1.02);
+  backdrop.scale.set(planeSize.x, planeSize.y, 1);
 }
 
-/* ---------- Glass: physical transmission with refraction + dispersion ---------- */
-const glass = new THREE.MeshPhysicalMaterial({
-  color: 0xffffff,
-  metalness: 0,
-  roughness: 0.24,          // frost: blurs what is refracted
-  transmission: 0.94,
-  thickness: 1.8,           // how far rays bend inside the volume
-  ior: 1.5,
-  dispersion: 5,            // splits refracted light into violet/blue/pink fringes
-  attenuationColor: new THREE.Color('#efeaff'),
-  attenuationDistance: 3.5,
-  iridescence: 0.55,
-  iridescenceIOR: 1.35,
-  iridescenceThicknessRange: [160, 520],
-  clearcoat: 0.35,
-  clearcoatRoughness: 0.3,
-  specularIntensity: 0.7,
-  sheen: 0.25,
-  sheenColor: new THREE.Color('#d8ccff'),
-  sheenRoughness: 0.4,
-  side: THREE.FrontSide,
+/* ---------- Pass 1: back faces → view-space exit normal + depth ---------- */
+const backRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+const backMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  vertexShader: `varying vec3 vN; varying vec3 vP;
+    void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vP = mv.xyz; vN = normalMatrix * normal; gl_Position = projectionMatrix * mv; }`,
+  fragmentShader: `varying vec3 vN; varying vec3 vP;
+    void main() { gl_FragColor = vec4(normalize(vN), -vP.z); }`,
+});
+
+/* ---------- Pass 2: the glass ---------- */
+const glassUniforms = {
+  tBack: { value: backRT.texture },
+  tBackdrop: { value: backTex },
+  uRes: { value: new THREE.Vector2() },
+  uProj: { value: camera.projectionMatrix },
+  uPlaneZ: { value: PLANE_Z },
+  uPlaneSize: { value: planeSize },
+  uTexH: { value: 1600 },
+  uIor: { value: 1.5 },
+  uAbbe: { value: 20 },
+  uRough: { value: 0.42 },
+  uMilk: { value: 0.35 },
+  uSigma: { value: new THREE.Vector3() },
+  uFilm: { value: 0.6 },
+};
+const glassMat = new THREE.ShaderMaterial({
+  uniforms: glassUniforms,
+  side: THREE.DoubleSide,
+  vertexShader: `varying vec3 vP; varying vec3 vN;
+    void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vP = mv.xyz; vN = normalMatrix * normal; gl_Position = projectionMatrix * mv; }`,
+  fragmentShader: /* glsl */`
+    #include <common>
+    uniform sampler2D tBack, tBackdrop;
+    uniform mat4 uProj;
+    uniform vec2 uRes, uPlaneSize;
+    uniform float uPlaneZ, uTexH, uIor, uAbbe, uRough, uMilk, uFilm;
+    uniform vec3 uSigma;
+    varying vec3 vP; varying vec3 vN;
+
+    const int FROST_SAMPLES = 5;
+    const int STEPS = 18;
+
+    vec2 toUv(vec3 p) { vec4 c = uProj * vec4(p, 1.0); return c.xy / c.w * 0.5 + 0.5; }
+    float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
+
+    // Studio surroundings, fixed in world space: soft boxes + a grey room.
+    float softbox(vec3 d, vec3 axis, float size, float blur) {
+      return smoothstep(cos(size + blur), cos(max(size - blur * 0.5, 0.0)), dot(d, axis));
+    }
+    vec3 envLight(vec3 dirView, float r) {
+      vec3 d = inverseTransformDirection(dirView, viewMatrix);
+      float b = 0.06 + r * 0.6;
+      vec3 c = mix(vec3(0.66, 0.66, 0.7), vec3(0.9, 0.9, 0.93), smoothstep(-0.5, 0.7, d.y));   // pale cyclorama
+      c += vec3(2.4) * softbox(d, normalize(vec3(-0.6, 0.7, 0.45)), 0.42, b);
+      c += vec3(0.55, 0.42, 1.0) * softbox(d, normalize(vec3(0.45, 0.35, -0.8)), 0.4, b);
+      c += vec3(0.55, 0.75, 1.0) * 0.7 * softbox(d, normalize(vec3(0.95, -0.15, 0.3)), 0.55, b);
+      return c;
+    }
+
+    // Sandblasted surface: tilt the normal inside a cone set by roughness.
+    vec3 microNormal(vec3 n, float a, vec2 xi) {
+      vec3 t = normalize(abs(n.y) < 0.99 ? cross(n, vec3(0, 1, 0)) : cross(n, vec3(1, 0, 0)));
+      vec3 b = cross(n, t);
+      float r = a * sqrt(xi.x), ph = 6.2831853 * xi.y;
+      return normalize(n + (t * cos(ph) + b * sin(ph)) * r);
+    }
+
+    // Thin-film interference on the reflection (per channel, ~650/530/450 nm).
+    vec3 thinFilm(float cosI) {
+      float nf = 1.38, d = 380.0;
+      float sinT2 = (1.0 - cosI * cosI) / (nf * nf);
+      float opd = 4.0 * 3.14159265 * nf * d * sqrt(max(1.0 - sinT2, 0.0));
+      vec3 R = 0.5 + 0.5 * cos(opd / vec3(650.0, 530.0, 450.0));
+      return mix(vec3(1.0), R * 1.6, uFilm);
+    }
+    float fresnel(float cosI, float eta) {
+      float f0 = (eta - 1.0) / (eta + 1.0); f0 *= f0;
+      return f0 + (1.0 - f0) * pow(1.0 - clamp(cosI, 0.0, 1.0), 5.0);
+    }
+
+    // Follow a ray leaving the glass at p with direction d to the backdrop (or the room).
+    float gChan;
+    vec3 sampleOut(vec3 p, vec3 d, float spread) {
+      if (d.z > -1e-3) return envLight(d, uRough);
+      float t = (uPlaneZ - p.z) / d.z;
+      vec3 hit = p + d * t;
+      vec2 uv = hit.xy / uPlaneSize + 0.5;
+      float blurWorld = t * spread;
+      float lod = log2(max(blurWorld / (uPlaneSize.y / uTexH), 1.0));
+      return textureLod(tBackdrop, uv, lod).rgb;
+    }
+
+    void main() {
+      vec3 V = normalize(vP);
+      vec3 N = normalize(vN);
+      bool front = gl_FrontFacing;
+      if (!front) N = -N;                       // seen through an opening in the scan
+      vec2 uvPix = gl_FragCoord.xy / uRes;
+      float a = uRough * uRough * 0.9;          // cone half-width of scattered normals
+      float spread = a * 0.35;                  // residual blur between samples
+
+      float dIor = (uIor - 1.0) / uAbbe;        // n_F - n_C
+      vec3 iors = vec3(uIor - 0.3 * dIor, uIor, uIor + 0.7 * dIor);
+
+      vec3 acc = vec3(0.0);
+      float jit = ign(gl_FragCoord.xy);
+      for (int s = 0; s < FROST_SAMPLES; s++) {
+        vec2 xi = fract(vec2(jit + float(s) / float(FROST_SAMPLES), jit * 7.31 + float(s) * 0.618));
+        vec3 n1 = microNormal(N, a, xi);
+        float cosI = max(dot(-V, n1), 0.0);
+
+        // Reflection off the front surface (with thin-film tint).
+        vec3 F = fresnel(cosI, uIor) * thinFilm(cosI);
+        vec3 refl = envLight(reflect(V, n1), uRough);
+
+        // Into the glass (mean index), march to the back surface.
+        vec3 T1 = refract(V, n1, 1.0 / uIor);
+        vec3 pExit = vP + T1 * 0.03;
+        vec3 nOut = T1;
+        if (front) {
+          vec4 b0 = texture2D(tBack, uvPix);
+          float L = b0.a > 0.0 ? clamp((b0.a + vP.z) * 2.2, 0.06, 4.0) : 0.12;
+          float dt = L / float(STEPS);
+          vec3 p = vP, prev = vP;
+          for (int i = 0; i < STEPS; i++) {
+            p += T1 * dt;
+            vec4 b = texture2D(tBack, toUv(p));
+            if (b.a <= 0.0 || -p.z >= b.a) break;
+            prev = p;
+          }
+          for (int i = 0; i < 5; i++) {
+            vec3 m = 0.5 * (prev + p);
+            vec4 b = texture2D(tBack, toUv(m));
+            if (b.a <= 0.0 || -m.z >= b.a) p = m; else prev = m;
+          }
+          vec4 bh = texture2D(tBack, toUv(p));
+          pExit = p;
+          if (bh.a > 0.0) nOut = normalize(bh.rgb);
+        }
+        float path = length(pExit - vP);
+
+        // Out of the glass: second refraction, per wavelength.
+        vec2 xi2 = fract(xi.yx * 1.7 + 0.37);
+        vec3 n2 = microNormal(nOut, a, xi2);
+        vec3 col;
+        for (int c = 0; c < 3; c++) {
+          float n = iors[c];
+          vec3 T1c = refract(V, n1, 1.0 / n);
+          vec3 T2 = refract(T1c, -n2, n);
+          vec3 o;
+          if (dot(T2, T2) < 1e-4) {
+            // Total internal reflection: the light bounces and escapes toward the room.
+            o = envLight(reflect(T1c, -n2), uRough) * 0.85;
+          } else {
+            float Fb = fresnel(max(dot(T1c, n2), 0.0), n);
+            o = sampleOut(pExit, T2, spread) * (1.0 - Fb) + envLight(reflect(T1c, -n2), uRough) * Fb * 0.5;
+          }
+          col[c] = o[c];
+        }
+        // Beer–Lambert absorption and in-scattering along the path inside.
+        col *= exp(-uSigma * path);
+        float scat = 1.0 - exp(-uMilk * path * 2.0);
+        vec3 inScatter = envLight(-N, 1.0) * 0.55 + envLight(N, 1.0) * 0.25;
+        col = mix(col, inScatter, scat);
+
+        acc += refl * F + col * (1.0 - F);
+      }
+      gl_FragColor = vec4(acc / float(FROST_SAMPLES), 1.0);
+    }`,
 });
 
 /* ---------- Skull mesh (packed binary, see assets/convert_skull.py) ---------- */
@@ -520,7 +663,7 @@ function decodeSkull() {
 
 const holder = new THREE.Group();
 scene.add(holder);
-let mesh = null, skullGeo = null, skullAnchors = [], anchors = [];
+let mesh = null, backMesh = null, skullGeo = null, skullAnchors = [], anchors = [];
 
 function nearestVertex(geo, target) {
   const p = geo.attributes.position;
@@ -532,7 +675,6 @@ function nearestVertex(geo, target) {
   }
   return [p.getX(best), p.getY(best), p.getZ(best)];
 }
-// Pick callout points on the front of whatever mesh is shown.
 function frontAnchors(geo) {
   geo.computeBoundingBox();
   const b = geo.boundingBox;
@@ -540,28 +682,22 @@ function frontAnchors(geo) {
   return [at(0.32, 0.62), at(0.5, 0.42), at(0.56, 0.2), at(0.6, 0.04)];
 }
 
-// Scanned meshes have open edges. A faint milky back-face shell fills them in.
-// It is transparent, so it is drawn after the transmission pass and never blocks the refraction.
-const backShell = new THREE.MeshPhysicalMaterial({
-  color: 0xdedbec, roughness: 0.45, transparent: true, opacity: 0.7, side: THREE.BackSide, depthWrite: false,
-});
-let shell = null;
 function setGeometry(geo, anchorList) {
-  if (mesh) { holder.remove(mesh, shell); if (mesh.geometry !== skullGeo) mesh.geometry.dispose(); }
-  mesh = new THREE.Mesh(geo, glass);
-  shell = new THREE.Mesh(geo, backShell);
-  holder.add(mesh, shell);
+  if (mesh) { holder.remove(mesh, backMesh); if (mesh.geometry !== skullGeo) mesh.geometry.dispose(); }
+  mesh = new THREE.Mesh(geo, glassMat);
+  backMesh = new THREE.Mesh(geo, backMat);
+  backMesh.layers.set(1);                       // only drawn in the back-face pass
+  holder.add(mesh, backMesh);
   anchors = anchorList;
 }
 
 /* ---------- Post: subtle lens fringe + film grain ---------- */
-const composer = new EffectComposer(renderer);
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
 composer.setPixelRatio(renderer.getPixelRatio());
-composer.setSize(innerWidth, innerHeight);
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new OutputPass());
 const lensPass = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, uCA: { value: 0.2 }, uGrain: { value: 0.45 }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(innerWidth, innerHeight) } },
+  uniforms: { tDiffuse: { value: null }, uCA: { value: 0.08 }, uGrain: { value: 0.4 }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } },
   vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
     uniform sampler2D tDiffuse; uniform float uCA, uGrain, uTime; uniform vec2 uRes; varying vec2 vUv;
@@ -571,8 +707,6 @@ const lensPass = new ShaderPass({
       vec2 off = d * uCA * 0.02 * (0.3 + r * 2.0);
       vec3 base = texture2D(tDiffuse, vUv).rgb;
       vec3 c = vec3(texture2D(tDiffuse, vUv - off).r, base.g, texture2D(tDiffuse, vUv + off).b);
-      float edge = dot(texture2D(tDiffuse, vUv - off * 1.5).rgb - texture2D(tDiffuse, vUv + off * 1.5).rgb, vec3(0.333));
-      c += vec3(0.45, 0.25, 1.0) * max(edge, 0.0) * 0.5;
       float l = dot(c, vec3(0.299, 0.587, 0.114));
       float g1 = hash(vUv * uRes + fract(uTime) * 91.0) - 0.5;
       float g2 = hash(vUv * uRes * 0.5 + fract(uTime * 1.3) * 53.0) - 0.5;
@@ -621,18 +755,18 @@ const bind = (id, fn, digits = 2) => {
   const apply = () => { const v = parseFloat(el.value); if (out) out.textContent = v.toFixed(digits); fn(v); };
   el.addEventListener('input', apply); apply();
 };
-bind('roughness', (v) => { glass.roughness = v; });
-bind('thickness', (v) => { glass.thickness = v; });
-bind('ior', (v) => { glass.ior = v; });
-bind('dispersion', (v) => { glass.dispersion = v; }, 1);
-bind('milk', (v) => { glass.transmission = 1 - v; });
-bind('iridescence', (v) => { glass.iridescence = v; });
+// Absorption: a faint lavender tint, as attenuation per unit of path length.
+const tint = new THREE.Vector3(0.06, 0.09, 0.02);
+bind('roughness', (v) => { glassUniforms.uRough.value = v; });
+bind('ior', (v) => { glassUniforms.uIor.value = v; });
+bind('abbe', (v) => { glassUniforms.uAbbe.value = v; }, 0);
+bind('milk', (v) => { glassUniforms.uMilk.value = v; });
+bind('absorb', (v) => { glassUniforms.uSigma.value.copy(tint).multiplyScalar(v * 6); });
+bind('film', (v) => { glassUniforms.uFilm.value = v; });
 bind('fringe', (v) => { lensPass.uniforms.uCA.value = v; });
 bind('grain', (v) => { lensPass.uniforms.uGrain.value = v; });
 $('autorotate').checked = !reduceMotion;
 $('autorotate').addEventListener('change', (e) => { controls.autoRotate = e.target.checked; });
-// Inner walls: back faces render into the transmission pass first, so light refracts twice (milkier, thicker look).
-$('inner').addEventListener('change', (e) => { glass.side = e.target.checked ? THREE.DoubleSide : THREE.FrontSide; glass.needsUpdate = true; if (shell) shell.visible = !e.target.checked; });
 $('callouts').addEventListener('change', (e) => { showCallouts = e.target.checked; });
 $('letters').addEventListener('change', (e) => { showLetters = e.target.checked; drawBackdrop(); });
 
@@ -687,12 +821,14 @@ addEventListener('drop', (e) => { e.preventDefault(); drop.hidden = true; loadFi
 /* ---------- Resize + loop ---------- */
 function onResize() {
   camera.aspect = innerWidth / innerHeight;
-  // Keep the skull's width in frame on portrait screens.
   camera.fov = camera.aspect < 1 ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(15)) * 0.8 / camera.aspect)) : 30;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
   composer.setSize(innerWidth, innerHeight);
-  lensPass.uniforms.uRes.value.set(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio());
+  const buf = renderer.getDrawingBufferSize(new THREE.Vector2());
+  backRT.setSize(buf.x, buf.y);
+  glassUniforms.uRes.value.copy(buf);
+  lensPass.uniforms.uRes.value.copy(buf);
   hud.setAttribute('viewBox', `0 0 ${innerWidth} ${innerHeight}`);
   drawBackdrop();
 }
@@ -701,9 +837,20 @@ onResize();
 document.fonts.load('100px "UnifrakturMaguntia"').then(drawBackdrop).catch(() => {});
 
 const clock = new THREE.Clock();
+function renderBackFaces() {
+  camera.layers.set(1);
+  renderer.setRenderTarget(backRT);
+  renderer.setClearColor(0x000000, 0);
+  renderer.clear();
+  renderer.render(scene, camera);
+  renderer.setRenderTarget(null);
+  camera.layers.set(0);
+}
 renderer.setAnimationLoop(() => {
   lensPass.uniforms.uTime.value = reduceMotion ? 0 : clock.getElapsedTime();
   controls.update();
+  camera.updateMatrixWorld();
+  renderBackFaces();
   composer.render();
   updateHUD();
 });
@@ -714,6 +861,6 @@ skullAnchors = frontAnchors(skullGeo);
 setGeometry(skullGeo, skullAnchors);
 skullLabel = `Skull · ${(skullGeo.index.count / 3).toLocaleString()} tris · Babylon.js Assets, CC BY 4.0`;
 statusEl.textContent = skullLabel;
-window.__app = { camera, controls, glass };
+window.__app = { camera, controls, glassUniforms };
 window.__ready = 1;
 </script>
