@@ -126,7 +126,7 @@
 <section class="specs" aria-label="效果拆解">
   <div>
     <h2>3D 轉向</h2>
-    <p>以貝殼本身為中心計算指標方向：左右轉約 <code>±50°</code>、上下仰俯約 <code>±32°</code>。指標移動的速度會讓貝殼朝移動方向多傾一下，再彈回來。上殼持續緩慢開合，氣泡往上飄。</p>
+    <p>以貝殼本身為中心計算指標方向：左右轉約 <code>±50°</code>、上下仰俯約 <code>+10° / −32°</code>。指標移動的速度會讓貝殼朝移動方向多傾一下，再彈回來。貝殼每 6 秒闔上、張開露出珍珠、再闔上，氣泡往上飄。</p>
   </div>
   <div>
     <h2>圓點像素化</h2>
@@ -151,6 +151,7 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const CELL_CSS = 10;          // grid cell size in CSS px
 const TRAIL_RADIUS = 2.6;     // brush radius in cells
 const TRAIL_DECAY = 0.955;    // per 60fps frame (~1s fade)
+const SHELL_CYCLE = 6;        // seconds per open/close cycle
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
 renderer.setClearColor(0x000000, 0);
@@ -162,11 +163,12 @@ const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60);
 // Flat "toon" lighting so the brightness tiers stay predictable:
 // out = tone * (ambient + diffuse * N·L). The composite pass maps tone to colour.
 const LIGHT_DIR = new THREE.Vector3(-0.45, 0.55, 0.7).normalize();
-function toonMaterial({ tone = 1, vertexTone = false, ambient = 0.45, side = THREE.FrontSide } = {}) {
+// pearl: true tags the surface (red > green) so the composite pass gives it its own colours
+function toonMaterial({ tone = 1, vertexTone = false, ambient = 0.45, side = THREE.FrontSide, pearl = false } = {}) {
   return new THREE.ShaderMaterial({
     side,
     vertexColors: vertexTone,
-    uniforms: { tone: { value: tone }, ambient: { value: ambient }, lightDir: { value: LIGHT_DIR } },
+    uniforms: { tone: { value: tone }, ambient: { value: ambient }, lightDir: { value: LIGHT_DIR }, tag: { value: pearl ? 0.5 : 1 } },
     vertexShader: `
       varying vec3 vN; varying float vTone;
       uniform float tone;
@@ -181,11 +183,12 @@ function toonMaterial({ tone = 1, vertexTone = false, ambient = 0.45, side = THR
       }`,
     fragmentShader: `
       varying vec3 vN; varying float vTone;
-      uniform float ambient; uniform vec3 lightDir;
+      uniform float ambient, tag; uniform vec3 lightDir;
       void main(){
         vec3 n = normalize(vN) * (gl_FrontFacing ? 1.0 : -1.0);
         float l = ambient + (1.0 - ambient) * max(dot(n, lightDir), 0.0);
-        gl_FragColor = vec4(vec3(vTone * l), 1.0);
+        float v = vTone * l;
+        gl_FragColor = vec4(v, v * tag, v * tag, 1.0);
       }`,
   });
 }
@@ -200,7 +203,7 @@ function shellPoint(t, r, sign, lift = 0, ribs = true) {
   const R = 1.65 * (1 + 0.025 * rib * r);
   const rr = r * R;
   const k = theta / THETA_MAX;
-  let y = 0.5 * Math.pow(Math.sin(Math.PI * (r * 0.9 + 0.05)), 0.7) * (1 - 0.35 * k * k);
+  let y = 0.5 * Math.pow(Math.sin(Math.PI * r), 0.7) * (1 - 0.35 * k * k);
   y += 0.07 * r * rib + lift;
   return { x: rr * Math.sin(theta), y: y * sign, z: rr * Math.cos(theta), rib };
 }
@@ -243,7 +246,7 @@ const shell = new THREE.Group();          // follows the pointer
 shell.scale.setScalar(1.12);
 // YXZ: yaw happens around the world's vertical axis, so left/right reads as the shell turning toward you
 shell.rotation.order = 'YXZ';
-shell.rotation.set(-1.2, -0.28, 0);
+shell.rotation.set(-0.8, -0.2, 0);
 const body = new THREE.Group();           // centres the shell on its pivot
 body.position.set(0, 0, -0.75);
 shell.add(body);
@@ -264,10 +267,10 @@ body.add(ear);
 
 // pearl
 const pearl = new THREE.Mesh(
-  new THREE.SphereGeometry(0.34, 32, 24),
-  toonMaterial({ tone: 1.0, ambient: 0.7 })
+  new THREE.SphereGeometry(0.3, 32, 24),
+  toonMaterial({ tone: 1.0, ambient: 0.35, pearl: true })
 );
-pearl.position.set(0, 0.2, 1.62);
+pearl.position.set(0, 0.05, 1.2);
 body.add(pearl);
 
 // bubbles rising from the mouth of the shell
@@ -341,6 +344,10 @@ const compMat = new THREE.ShaderMaterial({
     int tierOf(vec4 s){
       if (s.a < 0.12) return 0;
       if (s.a < 0.55) return 1;
+      if (s.r - s.g > 0.12 * s.a) {           // pearl: pale body, white highlight, pink shade
+        float v = s.r / s.a;
+        return v > 0.93 ? 4 : (v > 0.55 ? 5 : 3);
+      }
       float lum = dot(s.rgb, vec3(0.299, 0.587, 0.114)) / s.a;
       if (lum > 0.80) return 4;
       if (lum > 0.36) return 3;
@@ -510,16 +517,21 @@ function frame() {
 
   const ease = 1 - Math.pow(0.0004, dt);
   shell.rotation.y += (-0.2 + target.x * 0.88 + swing.x - shell.rotation.y) * ease;
-  shell.rotation.x += (-1.2 + target.y * 0.56 + swing.y * 0.8 - shell.rotation.x) * ease;
+  shell.rotation.x += (-0.8 + target.y * (target.y > 0 ? 0.18 : 0.55) + swing.y * 0.6 - shell.rotation.x) * ease;
   shell.rotation.z += (-swing.x * 0.35 + 0.04 * Math.sin(t * 0.7) - shell.rotation.z) * ease;
   shell.position.x += (target.x * 0.18 - shell.position.x) * ease;
-  shell.position.y = 0.1 * Math.sin(t * 1.1) - target.y * 0.12;
+  shell.position.y = 0.1 * Math.sin(t * 1.1) - target.y * 0.25;
 
   _v.set(0, 0.2, 0).project(camera);
   shellScreen.x = (_v.x * 0.5 + 0.5) * W;
   shellScreen.y = (-_v.y * 0.5 + 0.5) * H;
-  lid.rotation.x = -(0.3 + 0.12 * Math.sin(t * 0.9));
-  pearl.scale.setScalar(1 + 0.04 * Math.sin(t * 2.0));
+  // open / close cycle: rest closed, open to reveal the pearl, hold, close again
+  const cycle = (t % SHELL_CYCLE) / SHELL_CYCLE;
+  const open = THREE.MathUtils.smoothstep(cycle, 0.15, 0.35) - THREE.MathUtils.smoothstep(cycle, 0.7, 0.9);
+  lid.rotation.x = -open * 1.05;
+  pearl.position.y = 0.05 + open * 0.25;
+  pearl.position.z = 1.2 + open * 0.25;   // rolls toward the lip as the shell opens
+  pearl.scale.setScalar(0.85 + 0.15 * open);
 
   for (const b of bubbles) {
     b.y += b.speed * dt;
