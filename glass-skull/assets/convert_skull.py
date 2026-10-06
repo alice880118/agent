@@ -1,6 +1,6 @@
 """Pack BabylonJS skull.babylon (CC BY 4.0) into a compact binary for the page.
 
-The scan surface is lightly Taubin-smoothed (volume-preserving) so the glass
+Seam vertices are welded so the surface is closed, then it is lightly Taubin-smoothed (volume-preserving) so the glass
 reads as polished rather than lumpy, and normals are recomputed.
 
 Layout (little endian):
@@ -21,6 +21,14 @@ m = json.load(open(src))["meshes"][0]
 P = np.array(m["positions"], dtype=np.float64).reshape(-1, 3)
 F = np.array(m["indices"], dtype=np.int64).reshape(-1, 3)
 P[:, 2] *= -1
+
+# The scan stores duplicate vertices along its UV seams. Weld them first:
+# smoothing unwelded copies separately would pull the seams open into cracks.
+_, first, inv = np.unique(np.round(P, 5), axis=0, return_index=True, return_inverse=True)
+inv = inv.reshape(-1)
+P = P[first]
+F = inv[F]
+F = F[(F[:, 0] != F[:, 1]) & (F[:, 1] != F[:, 2]) & (F[:, 2] != F[:, 0])]
 # Negating z mirrors the mesh, which already turns Babylon's clockwise fronts
 # into three.js counter-clockwise fronts, so the index order stays as is.
 
