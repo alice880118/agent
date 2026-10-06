@@ -62,6 +62,7 @@ pre.py { margin: 0; max-height: 220px; overflow: auto; background: rgba(18,18,22
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
 </style>
 
+
 <div id="stage"></div>
 <svg id="hud" aria-hidden="true"></svg>
 
@@ -70,47 +71,50 @@ pre.py { margin: 0; max-height: 220px; overflow: auto; background: rgba(18,18,22
   <p>Drag to rotate · scroll to zoom</p>
 </header>
 
-<aside class="panel" aria-label="Material controls">
+<aside class="panel" aria-label="Glass controls">
   <details open>
-    <summary>Material</summary>
+    <summary>Glass</summary>
     <div class="body">
-      <div class="row"><label for="roughness">Frost (roughness)</label><output for="roughness"></output><input id="roughness" type="range" min="0" max="1" step="0.01" value="0.45"></div>
-      <div class="row"><label for="transmission">Transmission</label><output for="transmission"></output><input id="transmission" type="range" min="0" max="1" step="0.01" value="0.82"></div>
-      <div class="row"><label for="ink">Ink voids</label><output for="ink"></output><input id="ink" type="range" min="0" max="1" step="0.01" value="0.6"></div>
-      <div class="row"><label for="iridescence">Iridescence</label><output for="iridescence"></output><input id="iridescence" type="range" min="0" max="1" step="0.01" value="0.6"></div>
-      <div class="row"><label for="rim">Violet rim</label><output for="rim"></output><input id="rim" type="range" min="0" max="1.5" step="0.01" value="0.5"></div>
-      <div class="row"><label for="fringe">Chromatic fringe</label><output for="fringe"></output><input id="fringe" type="range" min="0" max="1" step="0.01" value="0.35"></div>
-      <div class="row"><label for="grain">Grain</label><output for="grain"></output><input id="grain" type="range" min="0" max="1" step="0.01" value="0.5"></div>
+      <div class="row"><label for="roughness">Frost</label><output for="roughness"></output><input id="roughness" type="range" min="0" max="0.8" step="0.01" value="0.22"></div>
+      <div class="row"><label for="thickness">Thickness</label><output for="thickness"></output><input id="thickness" type="range" min="0" max="4" step="0.05" value="2.4"></div>
+      <div class="row"><label for="ior">Index of refraction</label><output for="ior"></output><input id="ior" type="range" min="1" max="2.3" step="0.01" value="1.55"></div>
+      <div class="row"><label for="dispersion">Dispersion</label><output for="dispersion"></output><input id="dispersion" type="range" min="0" max="10" step="0.1" value="3.5"></div>
+      <div class="row"><label for="milk">Milkiness</label><output for="milk"></output><input id="milk" type="range" min="0" max="0.6" step="0.01" value="0.1"></div>
+      <div class="row"><label for="iridescence">Iridescence</label><output for="iridescence"></output><input id="iridescence" type="range" min="0" max="1" step="0.01" value="0.55"></div>
+      <div class="row"><label for="fringe">Lens fringe</label><output for="fringe"></output><input id="fringe" type="range" min="0" max="1" step="0.01" value="0.1"></div>
+      <div class="row"><label for="grain">Grain</label><output for="grain"></output><input id="grain" type="range" min="0" max="1" step="0.01" value="0.45"></div>
       <div class="checks">
         <label><input id="autorotate" type="checkbox" checked> Auto-rotate</label>
         <label><input id="callouts" type="checkbox" checked> Callouts</label>
         <label><input id="letters" type="checkbox" checked> Blackletter</label>
+        <label><input id="inner" type="checkbox"> Inner walls</label>
       </div>
     </div>
   </details>
   <details>
     <summary>Model</summary>
     <div class="body">
-      <p class="note">The skull is generated in the browser. Load your own .glb (or drop it on the page) to see the material on it. Draco-compressed files are not supported.</p>
+      <p class="note">Skull mesh: “skull” from <a href="https://github.com/BabylonJS/Assets" target="_blank" rel="noopener">Babylon.js Assets</a>, CC BY 4.0. Load your own .glb (or drop it on the page) to put it in the same glass. Draco-compressed files are not supported.</p>
       <div class="btns">
         <label class="filebtn">Load .glb<input id="file" type="file" accept=".glb,.gltf,model/gltf-binary"></label>
-        <button id="reset" type="button">Use built-in skull</button>
+        <button id="reset" type="button">Use the skull</button>
       </div>
     </div>
   </details>
   <details>
     <summary>Blender material</summary>
     <div class="body">
-      <p class="note">Select your mesh in Blender 4.2+, open Scripting, paste and run. It builds the same look in Cycles: Principled glass with thin-film, AO-driven ink, violet rim, volume absorption, and a lens-dispersion fringe in the compositor.</p>
+      <p class="note">Select your mesh in Blender 4.2+, open Scripting, paste and run. It sets up the same glass in Cycles (rough transmission, dispersion, thin-film) and a grey backdrop with large black letters behind the object, so the refraction has something to bend.</p>
       <div class="btns"><button id="copy" type="button">Copy Python script</button></div>
       <pre class="py" id="py" tabindex="0">__BLENDER_PY__</pre>
     </div>
   </details>
 </aside>
 
-<div id="status">Casting glass…</div>
-<div id="drop" hidden>Drop .glb to apply the material</div>
+<div id="status">Loading skull…</div>
+<div id="drop" hidden>Drop .glb to put it in glass</div>
 
+<script id="skull-data" type="application/octet-stream">__SKULL_B64__</script>
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
@@ -121,8 +125,6 @@ pre.py { margin: 0; max-height: 220px; overflow: auto; background: rgba(18,18,22
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -135,64 +137,65 @@ const statusEl = $('status');
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- Renderer, scene, camera ---------- */
-const stage = $('stage');
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.NeutralToneMapping;
-renderer.toneMappingExposure = 1.0;
-stage.appendChild(renderer.domElement);
+$('stage').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 60);
-camera.position.set(4.6, 0.5, 1.5);
+camera.position.set(4.4, 0.5, 1.9);
 scene.add(camera);
 
 const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.03).texture;
-scene.environmentIntensity = 0.9;
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.02).texture;
+scene.environmentIntensity = 0.55;
 
-const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(-3, 4, 3); scene.add(key);
-const rimL = new THREE.DirectionalLight(0x9a6bff, 1.0); rimL.position.set(2, 1.5, -4); scene.add(rimL);
-const fill = new THREE.DirectionalLight(0xbfe4ff, 0.8); fill.position.set(3, -2, 2); scene.add(fill);
+const key = new THREE.DirectionalLight(0xffffff, 2.0); key.position.set(-3, 4, 3); scene.add(key);
+const rimL = new THREE.DirectionalLight(0xa58bff, 2.0); rimL.position.set(2, 1.5, -4); scene.add(rimL);
+const fill = new THREE.DirectionalLight(0xcde8ff, 0.8); fill.position.set(3, -2, 2); scene.add(fill);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.enablePan = false;
-controls.minDistance = 3;
+controls.minDistance = 2.6;
 controls.maxDistance = 9;
 controls.autoRotate = !reduceMotion;
-controls.autoRotateSpeed = 0.9;
-controls.target.set(0, -0.05, 0);
+controls.autoRotateSpeed = 0.8;
+controls.target.set(0, 0, 0);
 
-/* ---------- Backdrop: grid + blackletter, glued to the camera ---------- */
+/* ---------- Backdrop: grid + blackletter, glued to the camera.
+   It is an ordinary opaque mesh, so the glass refracts it for real. ---------- */
 const backCanvas = document.createElement('canvas');
 const backTex = new THREE.CanvasTexture(backCanvas);
 backTex.colorSpace = THREE.SRGBColorSpace;
+backTex.anisotropy = 4;
 const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: backTex }));
-backdrop.position.z = -12;
+backdrop.position.z = -9;
 camera.add(backdrop);
 let showLetters = true;
 
 function drawBackdrop() {
   const aspect = innerWidth / innerHeight;
-  const H = 1400, W = Math.round(H * aspect);
+  const H = 1600, W = Math.round(H * aspect);
   backCanvas.width = W; backCanvas.height = H;
   const g = backCanvas.getContext('2d');
-  g.fillStyle = '#e3e3e6'; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#e1e1e4'; g.fillRect(0, 0, W, H);
   const cell = H / 34;
-  g.strokeStyle = 'rgba(18,18,22,0.075)'; g.lineWidth = 1;
+  g.strokeStyle = 'rgba(18,18,22,0.08)'; g.lineWidth = 1.5;
   g.beginPath();
-  for (let x = (W / 2) % cell; x < W; x += cell) { g.moveTo(x + 0.5, 0); g.lineTo(x + 0.5, H); }
-  for (let y = (H / 2) % cell; y < H; y += cell) { g.moveTo(0, y + 0.5); g.lineTo(W, y + 0.5); }
+  for (let x = (W / 2) % cell; x < W; x += cell) { g.moveTo(x, 0); g.lineTo(x, H); }
+  for (let y = (H / 2) % cell; y < H; y += cell) { g.moveTo(0, y); g.lineTo(W, y); }
   g.stroke();
   if (showLetters) {
-    g.fillStyle = '#121216';
-    g.textBaseline = 'alphabetic';
-    const s = H * 0.66;
-    g.font = `${s}px "UnifrakturMaguntia", serif`;
+    // Letters cross behind the skull so the glass has dark shapes to bend.
+    g.fillStyle = '#111114';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = `${H * 0.78}px "UnifrakturMaguntia", serif`;
     const cx = W / 2;
-    const glyphs = [['A', cx - H * 0.92, H * 0.4], ['T', cx + H * 0.3, H * 0.34], ['E', cx - H * 0.86, H * 1.12], ['Q', cx + H * 0.22, H * 1.16]];
+    const glyphs = [['A', cx - H * 0.36, H * 0.2], ['T', cx + H * 0.34, H * 0.24], ['E', cx - H * 0.3, H * 0.86], ['Q', cx + H * 0.36, H * 0.84]];
     for (const [ch, x, y] of glyphs) g.fillText(ch, x, y);
   }
   backTex.needsUpdate = true;
@@ -201,273 +204,107 @@ function drawBackdrop() {
   backdrop.scale.set(h * aspect * 1.02, h * 1.02, 1);
 }
 
-/* ---------- The frosted holo glass material ---------- */
-const uniforms = {
-  uInk: { value: 0.55 },
-  uRim: { value: 0.5 },
-  uRimColor: { value: new THREE.Color('#8a5cff') },
-  uNavy: { value: new THREE.Color('#0b0e3c') },
-  uBlack: { value: new THREE.Color('#040409') },
-  uCyan: { value: new THREE.Color('#1b8fb0') },
-};
-
+/* ---------- Glass: physical transmission with refraction + dispersion ---------- */
 const glass = new THREE.MeshPhysicalMaterial({
-  color: 0xf4f3fa,
-  roughness: 0.45,
+  color: 0xffffff,
   metalness: 0,
-  transmission: 0.82,
-  thickness: 1.4,
-  ior: 1.38,
-  attenuationColor: new THREE.Color('#f0eeff'),
-  attenuationDistance: 2.2,
-  iridescence: 0.9,
-  iridescenceIOR: 1.55,
-  iridescenceThicknessRange: [180, 620],
-  sheen: 0.25,
-  sheenColor: new THREE.Color('#ddd6ff'),
-  sheenRoughness: 0.45,
+  roughness: 0.24,          // frost: blurs what is refracted
+  transmission: 0.94,
+  thickness: 1.8,           // how far rays bend inside the volume
+  ior: 1.5,
+  dispersion: 5,            // splits refracted light into violet/blue/pink fringes
+  attenuationColor: new THREE.Color('#efeaff'),
+  attenuationDistance: 3.5,
+  iridescence: 0.55,
+  iridescenceIOR: 1.35,
+  iridescenceThicknessRange: [160, 520],
   clearcoat: 0.35,
-  clearcoatRoughness: 0.28,
-  specularIntensity: 0.9,
+  clearcoatRoughness: 0.3,
+  specularIntensity: 0.7,
+  sheen: 0.25,
+  sheenColor: new THREE.Color('#d8ccff'),
+  sheenRoughness: 0.4,
+  side: THREE.FrontSide,
 });
 
-glass.onBeforeCompile = (shader) => {
-  Object.assign(shader.uniforms, uniforms);
-  shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', `#include <common>
-      attribute float aCavity;
-      varying float vCavity;
-      varying vec3 vObj;`)
-    .replace('#include <begin_vertex>', `#include <begin_vertex>
-      vCavity = aCavity;
-      vObj = position;`);
-  shader.fragmentShader = shader.fragmentShader
-    .replace('#include <common>', `#include <common>
-      uniform float uInk, uRim;
-      uniform vec3 uRimColor, uNavy, uBlack, uCyan;
-      varying float vCavity;
-      varying vec3 vObj;
-      float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
-      float vnoise(vec3 x) {
-        vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
-        return mix(mix(mix(h3(i), h3(i + vec3(1,0,0)), f.x), mix(h3(i + vec3(0,1,0)), h3(i + vec3(1,1,0)), f.x), f.y),
-                   mix(mix(h3(i + vec3(0,0,1)), h3(i + vec3(1,0,1)), f.x), mix(h3(i + vec3(0,1,1)), h3(i + vec3(1,1,1)), f.x), f.y), f.z);
-      }
-      float fbm(vec3 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a * vnoise(p); p = p * 2.03 + 11.7; a *= 0.5; } return s; }
-      float hash2(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-      float gInk = 0.0;`)
-    .replace('#include <color_fragment>', `#include <color_fragment>
-      {
-        float n = fbm(vObj * 2.3 + vec3(0.0, 3.1, 0.0));
-        float blot = smoothstep(0.48, 0.66, n);                    // big patches on the cranium
-        float k = vCavity * 1.6 + blot * 0.85 + (n - 0.5) * 0.35;
-        float jitter = (hash2(gl_FragCoord.xy) - 0.5) * 0.14;      // stippled, dithered edges
-        float t = k + jitter - (1.0 - uInk) * 0.7 + 0.08;
-        gInk = smoothstep(0.3, 0.58, t);
-        float edge = smoothstep(0.22, 0.34, t) * (1.0 - smoothstep(0.34, 0.5, t));
-        vec3 inkCol = mix(uNavy, uBlack, smoothstep(0.55, 0.9, t));
-        diffuseColor.rgb = mix(diffuseColor.rgb, uCyan, edge * 0.3 * uInk);
-        diffuseColor.rgb = mix(diffuseColor.rgb, inkCol, gInk);
-      }`)
-    .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-      {
-        float fres = pow(1.0 - saturate(dot(normalize(normal), normalize(vViewPosition))), 4.0);
-        totalEmissiveRadiance += uRimColor * fres * uRim * (1.0 - gInk * 0.7);
-      }`);
-};
-
-/* ---------- Procedural skull (signed distance field) ---------- */
-const v3 = (x, y, z) => [x, y, z];
-function len3(x, y, z) { return Math.sqrt(x * x + y * y + z * z); }
-function sdEll(px, py, pz, cx, cy, cz, rx, ry, rz) {
-  const x = px - cx, y = py - cy, z = pz - cz;
-  const k0 = len3(x / rx, y / ry, z / rz), k1 = len3(x / (rx * rx), y / (ry * ry), z / (rz * rz));
-  return k1 < 1e-6 ? -Math.min(rx, ry, rz) : k0 * (k0 - 1) / k1;
-}
-function sdCap(px, py, pz, a, b, r) {
-  const pax = px - a[0], pay = py - a[1], paz = pz - a[2];
-  const bax = b[0] - a[0], bay = b[1] - a[1], baz = b[2] - a[2];
-  const h = Math.max(0, Math.min(1, (pax * bax + pay * bay + paz * baz) / (bax * bax + bay * bay + baz * baz)));
-  return len3(pax - bax * h, pay - bay * h, paz - baz * h) - r;
-}
-function smin(a, b, k) { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; }
-function ssub(d, cut, k) { const h = Math.max(k - Math.abs(-cut - d), 0) / k; return Math.max(d, -cut) + h * h * k * 0.25; }
-function sdRBox(x, y, z, bx, by, bz, r) {
-  const qx = Math.abs(x) - bx, qy = Math.abs(y) - by, qz = Math.abs(z) - bz;
-  return len3(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, Math.max(qy, qz)), 0) - r;
-}
-// A band swept along a horizontal arc (dental arch, mandible body).
-function sdArc(px, py, pz, cz, R, tmax, yc, w, h, r, rise = 0, taper = 0) {
-  const th = Math.max(-tmax, Math.min(tmax, Math.atan2(px, pz - cz)));
-  const s = Math.sin(th), c = Math.cos(th);
-  const a = Math.abs(th) / tmax;
-  const qx = px - R * s, qy = py - (yc + rise * a), qz = pz - (cz + R * c);
-  return sdRBox(qx * s + qz * c, qy, qx * c - qz * s, w, h * (1 - taper * a), 0, r);
-}
-// Teeth: repeat one rounded tooth by angle along the arch.
-function sdTeeth(px, py, pz, cz, R, yTop, yBot, n, tmax, wid) {
-  if (pz < cz - 0.1 || py > Math.max(yTop, yBot) + 0.08 || py < Math.min(yTop, yBot) - 0.08) return 1;
-  const th = Math.atan2(px, pz - cz);
-  const step = (2 * tmax) / (n - 1);
-  const i = Math.max(0, Math.min(n - 1, Math.round((th + tmax) / step)));
-  let best = 1;
-  for (let j = i - 1; j <= i + 1; j++) {
-    if (j < 0 || j >= n) continue;
-    const t = -tmax + j * step, s = Math.sin(t), c = Math.cos(t);
-    const front = 1 - Math.abs(t) / tmax;               // incisors are narrower and taller
-    const tw = wid * (0.8 + 0.5 * (1 - front));
-    const ax = R * s, az = cz + R * c;
-    const d = sdCap(px, py, pz, v3(ax, yTop, az), v3(ax, yBot, az), tw);
-    best = Math.min(best, d);
-  }
-  return best;
-}
-
-function skullSDF(x, y, z) {
-  const ax = Math.abs(x);                                         // bilateral symmetry
-  let d = sdEll(x, y, z, 0, 0.26, -0.16, 0.56, 0.55, 0.7);         // cranium
-  d = smin(d, sdEll(x, y, z, 0, -0.1, -0.14, 0.47, 0.3, 0.52), 0.2);  // skull base
-  d = smin(d, sdEll(x, y, z, 0, 0.2, 0.22, 0.47, 0.5, 0.4), 0.15);    // forehead
-  d = smin(d, sdEll(x, y, z, 0, -0.18, 0.32, 0.4, 0.38, 0.37), 0.2);  // mid-face
-  d = smin(d, sdCap(x, y, z, v3(-0.33, 0.13, 0.55), v3(0.33, 0.13, 0.55), 0.065), 0.1); // brow ridge
-  d = smin(d, sdEll(ax, y, z, 0.29, -0.13, 0.42, 0.12, 0.1, 0.1), 0.08);                // cheekbones
-  d = smin(d, sdArc(x, y, z, 0.16, 0.33, 1.2, -0.44, 0.045, 0.05, 0.035), 0.1);           // maxilla
-  d = ssub(d, sdEll(ax, y, z, 0.185, -0.01, 0.64, 0.135, 0.125, 0.33), 0.04);             // orbits
-  d = ssub(d, sdEll(x, y, z, 0, -0.25, 0.7, 0.055, 0.1, 0.2), 0.03);                      // nasal aperture
-  d = ssub(d, sdEll(ax, y, z, 0.6, -0.04, 0.05, 0.12, 0.2, 0.3), 0.08);                  // temporal fossa
-  d = smin(d, sdCap(ax, y, z, v3(0.34, -0.15, 0.33), v3(0.47, -0.12, -0.06), 0.045), 0.04); // zygomatic arch
-  // mandible
-  let m = sdArc(x, y, z, 0.12, 0.34, 1.2, -0.72, 0.04, 0.06, 0.03, 0.05, 0.25);
-  m = smin(m, sdEll(x, y, z, 0, -0.76, 0.46, 0.09, 0.07, 0.06), 0.06);
-  m = smin(m, sdCap(ax, y, z, v3(0.31, -0.68, 0.24), v3(0.37, -0.66, -0.08), 0.055), 0.06);
-  m = smin(m, sdCap(ax, y, z, v3(0.38, -0.68, -0.08), v3(0.42, -0.24, -0.1), 0.065), 0.08);
-  m = smin(m, sdCap(ax, y, z, v3(0.36, -0.6, -0.02), v3(0.36, -0.38, 0.06), 0.03), 0.04);  // coronoid
-  d = smin(d, m, 0.03);
-  // teeth
-  d = Math.min(d, sdTeeth(x, y, z, 0.16, 0.32, -0.47, -0.56, 14, 1.15, 0.025));
-  d = Math.min(d, sdTeeth(x, y, z, 0.1, 0.355, -0.59, -0.66, 14, 1.1, 0.023));
-  return d;
-}
-
-function buildSkull(res = 112) {
-  const mc = new MarchingCubes(res, new THREE.MeshBasicMaterial(), false, false, 360000);
-  mc.isolation = 0;
-  const half = res / 2;
-  const f = mc.field;
-  for (let z = 0; z < res; z++) for (let y = 0; y < res; y++) for (let x = 0; x < res; x++) {
-    f[x + y * res + z * res * res] = -skullSDF((x - half) / half, (y - half) / half, (z - half) / half);
-  }
-  mc.update();
-  const n = mc.count;
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(mc.geometry.attributes.position.array.slice(0, n * 3), 3));
-  mc.geometry.dispose();
-  return finishGeometry(geo, (p, nrm) => cavityFromSDF(p, nrm));
-}
-
-// Ambient-occlusion style probe along the normal: high in sockets and folds.
-function cavityFromSDF(p, n) {
-  let ao = 0, w = 1;
-  for (let i = 1; i <= 5; i++) {
-    const h = 0.05 * i;
-    ao += w * (h - skullSDF(p[0] + n[0] * h, p[1] + n[1] * h, p[2] + n[2] * h));
-    w *= 0.65;
-  }
-  return Math.min(1, Math.max(0, ao * 2.6));
-}
-
-function finishGeometry(geo, cavityFn) {
-  let g = mergeVertices(geo, 1e-5);
-  g.computeVertexNormals();
-  const pos = g.attributes.position, nor = g.attributes.normal;
-  const cav = new Float32Array(pos.count);
-  if (cavityFn) {
-    for (let i = 0; i < pos.count; i++) {
-      cav[i] = cavityFn([pos.getX(i), pos.getY(i), pos.getZ(i)], [nor.getX(i), nor.getY(i), nor.getZ(i)]);
-    }
-  } else {
-    curvatureCavity(g, cav);
-  }
-  g.setAttribute('aCavity', new THREE.BufferAttribute(cav, 1));
+/* ---------- Skull mesh (packed binary, see assets/convert_skull.py) ---------- */
+function decodeSkull() {
+  const bin = Uint8Array.from(atob($('skull-data').textContent.trim()), (c) => c.charCodeAt(0));
+  const dv = new DataView(bin.buffer);
+  const vc = dv.getUint32(0, true), tc = dv.getUint32(4, true);
+  let o = 12;
+  const pos = new Float32Array(vc * 3), nor = new Float32Array(vc * 3);
+  const p16 = new Int16Array(bin.buffer.slice(o, o + vc * 6)); o += vc * 6;
+  const n8 = new Int8Array(bin.buffer.slice(o, o + vc * 3)); o += vc * 3; o += o % 2;
+  const idx = new Uint16Array(bin.buffer.slice(o, o + tc * 6));
+  for (let i = 0; i < vc * 3; i++) { pos[i] = p16[i] / 32767 * 0.95; nor[i] = n8[i] / 127; }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.computeBoundingSphere();
   return g;
 }
 
-// For imported meshes: concavity from the Laplacian, smoothed into soft pools.
-function curvatureCavity(g, out) {
-  const pos = g.attributes.position, nor = g.attributes.normal, idx = g.index.array, n = pos.count;
-  const sum = new Float32Array(n * 3), cnt = new Uint16Array(n);
-  for (let t = 0; t < idx.length; t += 3) {
-    const a = idx[t], b = idx[t + 1], c = idx[t + 2];
-    for (const [i, j, k] of [[a, b, c], [b, c, a], [c, a, b]]) {
-      sum[i * 3] += pos.getX(j) + pos.getX(k); sum[i * 3 + 1] += pos.getY(j) + pos.getY(k); sum[i * 3 + 2] += pos.getZ(j) + pos.getZ(k);
-      cnt[i] += 2;
-    }
+const holder = new THREE.Group();
+scene.add(holder);
+let mesh = null, skullGeo = null, skullAnchors = [], anchors = [];
+
+function nearestVertex(geo, target) {
+  const p = geo.attributes.position;
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < p.count; i++) {
+    const dx = p.getX(i) - target[0], dy = p.getY(i) - target[1], dz = p.getZ(i) - target[2];
+    const d = dx * dx + dy * dy + dz * dz;
+    if (d < bd) { bd = d; best = i; }
   }
-  let v = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    if (!cnt[i]) continue;
-    const dx = sum[i * 3] / cnt[i] - pos.getX(i), dy = sum[i * 3 + 1] / cnt[i] - pos.getY(i), dz = sum[i * 3 + 2] / cnt[i] - pos.getZ(i);
-    v[i] = dx * nor.getX(i) + dy * nor.getY(i) + dz * nor.getZ(i);
-  }
-  for (let it = 0; it < 12; it++) {                               // diffuse the signal
-    const acc = new Float32Array(n), c2 = new Uint16Array(n);
-    for (let t = 0; t < idx.length; t += 3) {
-      const a = idx[t], b = idx[t + 1], c = idx[t + 2];
-      acc[a] += v[b] + v[c]; acc[b] += v[a] + v[c]; acc[c] += v[a] + v[b];
-      c2[a] += 2; c2[b] += 2; c2[c] += 2;
-    }
-    for (let i = 0; i < n; i++) if (c2[i]) v[i] = 0.5 * v[i] + 0.5 * acc[i] / c2[i];
-  }
-  const sorted = Array.from(v).sort((a, b) => a - b);
-  const hi = sorted[Math.floor(n * 0.97)] || 1e-6;
-  for (let i = 0; i < n; i++) out[i] = Math.min(1, Math.max(0, v[i] / hi));
+  return [p.getX(best), p.getY(best), p.getZ(best)];
+}
+// Pick callout points on the front of whatever mesh is shown.
+function frontAnchors(geo) {
+  geo.computeBoundingBox();
+  const b = geo.boundingBox;
+  const at = (fx, fy) => nearestVertex(geo, [THREE.MathUtils.lerp(b.min.x, b.max.x, fx), THREE.MathUtils.lerp(b.min.y, b.max.y, fy), b.max.z * 1.5]);
+  return [at(0.32, 0.62), at(0.5, 0.42), at(0.56, 0.2), at(0.6, 0.04)];
 }
 
-/* ---------- Mesh holder + HUD anchors ---------- */
-const holder = new THREE.Group();
-holder.rotation.x = 0.05;
-scene.add(holder);
-let mesh = null;
-let skullGeo = null;
-const skullAnchors = [v3(-0.2, 0.17, 0.66), v3(0.0, -0.12, 0.74), v3(0.08, -0.53, 0.47), v3(0.1, -0.8, 0.5)];
-let anchors = skullAnchors;
-
+// Scanned meshes have open edges. A faint milky back-face shell fills them in.
+// It is transparent, so it is drawn after the transmission pass and never blocks the refraction.
+const backShell = new THREE.MeshPhysicalMaterial({
+  color: 0xdedbec, roughness: 0.45, transparent: true, opacity: 0.7, side: THREE.BackSide, depthWrite: false,
+});
+let shell = null;
 function setGeometry(geo, anchorList) {
-  if (mesh) { holder.remove(mesh); if (mesh.geometry !== skullGeo) mesh.geometry.dispose(); }
+  if (mesh) { holder.remove(mesh, shell); if (mesh.geometry !== skullGeo) mesh.geometry.dispose(); }
   mesh = new THREE.Mesh(geo, glass);
-  mesh.scale.setScalar(1.05);
-  holder.add(mesh);
+  shell = new THREE.Mesh(geo, backShell);
+  holder.add(mesh, shell);
   anchors = anchorList;
 }
 
-/* ---------- Post: chromatic fringe + grain ---------- */
+/* ---------- Post: subtle lens fringe + film grain ---------- */
 const composer = new EffectComposer(renderer);
 composer.setPixelRatio(renderer.getPixelRatio());
 composer.setSize(innerWidth, innerHeight);
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new OutputPass());
 const lensPass = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, uCA: { value: 0.45 }, uGrain: { value: 0.5 }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(innerWidth, innerHeight) } },
+  uniforms: { tDiffuse: { value: null }, uCA: { value: 0.2 }, uGrain: { value: 0.45 }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(innerWidth, innerHeight) } },
   vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
     uniform sampler2D tDiffuse; uniform float uCA, uGrain, uTime; uniform vec2 uRes; varying vec2 vUv;
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     void main() {
       vec2 d = vUv - 0.5; float r = length(d);
-      vec2 off = d * uCA * 0.022 * (0.35 + r * 2.0);
+      vec2 off = d * uCA * 0.02 * (0.3 + r * 2.0);
       vec3 base = texture2D(tDiffuse, vUv).rgb;
-      vec3 inS = texture2D(tDiffuse, vUv - off).rgb, outS = texture2D(tDiffuse, vUv + off).rgb;
-      vec3 c = base;
-      c.r = mix(base.r, inS.r, 0.3);                 // gentle RGB split
-      c.b = mix(base.b, texture2D(tDiffuse, vUv - off * 1.6).b, 0.3);
-      float l0 = dot(base, vec3(0.299, 0.587, 0.114));
-      float edge = dot(inS - outS, vec3(0.299, 0.587, 0.114));
-      c += vec3(0.42, 0.22, 1.0) * max(edge, 0.0) * 0.55;   // violet on the bright side's halo
-      c += vec3(0.1, 0.55, 0.75) * max(-edge, 0.0) * 0.25;  // cyan bleed into the dark side
+      vec3 c = vec3(texture2D(tDiffuse, vUv - off).r, base.g, texture2D(tDiffuse, vUv + off).b);
+      float edge = dot(texture2D(tDiffuse, vUv - off * 1.5).rgb - texture2D(tDiffuse, vUv + off * 1.5).rgb, vec3(0.333));
+      c += vec3(0.45, 0.25, 1.0) * max(edge, 0.0) * 0.5;
       float l = dot(c, vec3(0.299, 0.587, 0.114));
       float g1 = hash(vUv * uRes + fract(uTime) * 91.0) - 0.5;
       float g2 = hash(vUv * uRes * 0.5 + fract(uTime * 1.3) * 53.0) - 0.5;
-      c += (g1 * 0.75 + g2 * 0.25) * uGrain * 0.16 * (1.15 - l * 0.7);
+      c += (g1 * 0.75 + g2 * 0.25) * uGrain * 0.15 * (1.15 - l * 0.7);
       gl_FragColor = vec4(c, 1.0);
     }`,
 });
@@ -476,61 +313,54 @@ composer.addPass(lensPass);
 /* ---------- HUD callouts ---------- */
 const hud = $('hud');
 const NS = 'http://www.w3.org/2000/svg';
-const hudLine = document.createElementNS(NS, 'polyline');
-hudLine.setAttribute('fill', 'none'); hudLine.setAttribute('stroke', '#121216'); hudLine.setAttribute('stroke-width', '0.8'); hudLine.setAttribute('stroke-dasharray', '3 3');
-hud.appendChild(hudLine);
-const tail = document.createElementNS(NS, 'line');
-tail.setAttribute('stroke', '#121216'); tail.setAttribute('stroke-width', '0.8'); tail.setAttribute('stroke-dasharray', '3 3');
-hud.appendChild(tail);
-const marks = [];
-for (let i = 0; i < 4; i++) {
-  const r = document.createElementNS(NS, 'rect');
-  r.setAttribute('width', '9'); r.setAttribute('height', '9'); r.setAttribute('fill', 'none'); r.setAttribute('stroke', '#6b4cff'); r.setAttribute('stroke-width', '1.2');
-  const t1 = document.createElementNS(NS, 'text'), t2 = document.createElementNS(NS, 'text');
-  hud.append(r, t1, t2);
-  marks.push({ r, t1, t2 });
-}
+const mk = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); hud.appendChild(e); return e; };
+const hudLine = mk('polyline', { fill: 'none', stroke: '#121216', 'stroke-width': 0.8, 'stroke-dasharray': '3 3' });
+const tail = mk('line', { stroke: '#121216', 'stroke-width': 0.8, 'stroke-dasharray': '3 3' });
+const marks = Array.from({ length: 4 }, () => ({
+  r: mk('rect', { width: 9, height: 9, fill: 'none', stroke: '#6b4cff', 'stroke-width': 1.2 }),
+  t1: mk('text', {}), t2: mk('text', {}),
+}));
 let showCallouts = true;
 const tmpV = new THREE.Vector3();
 function updateHUD() {
-  hud.style.display = showCallouts && mesh ? '' : 'none';
-  if (!showCallouts || !mesh) return;
-  const pts = [];
+  const on = showCallouts && mesh && anchors.length === 4;
+  hud.style.display = on ? '' : 'none';
+  if (!on) return;
   const dpr = renderer.getPixelRatio();
-  anchors.forEach((a, i) => {
-    tmpV.set(a[0], a[1], a[2]);
-    mesh.localToWorld(tmpV);
-    tmpV.project(camera);
+  const pts = anchors.map((a, i) => {
+    tmpV.set(a[0], a[1], a[2]); mesh.localToWorld(tmpV); tmpV.project(camera);
     const x = (tmpV.x * 0.5 + 0.5) * innerWidth, y = (-tmpV.y * 0.5 + 0.5) * innerHeight;
-    pts.push([x, y]);
     const m = marks[i];
     m.r.setAttribute('x', (x - 4.5).toFixed(1)); m.r.setAttribute('y', (y - 4.5).toFixed(1));
     m.t1.setAttribute('x', (x + 8).toFixed(1)); m.t1.setAttribute('y', (y + 14).toFixed(1));
     m.t2.setAttribute('x', (x + 8).toFixed(1)); m.t2.setAttribute('y', (y + 26).toFixed(1));
     m.t1.textContent = Math.round(x * dpr); m.t2.textContent = Math.round(y * dpr);
+    return [x, y];
   });
   hudLine.setAttribute('points', pts.map((p) => p.join(',')).join(' '));
-  const [lx, ly] = pts[pts.length - 1], [px, py] = pts[pts.length - 2];
-  const dx = lx - px, dy = ly - py, L = Math.hypot(dx, dy) || 1;
+  const [lx, ly] = pts[3], [px, py] = pts[2], dx = lx - px, dy = ly - py, L = Math.hypot(dx, dy) || 1;
   tail.setAttribute('x1', lx); tail.setAttribute('y1', ly);
   tail.setAttribute('x2', lx + dx / L * 2000); tail.setAttribute('y2', ly + dy / L * 2000);
 }
 
 /* ---------- Controls panel ---------- */
-const bind = (id, fn) => {
+const bind = (id, fn, digits = 2) => {
   const el = $(id), out = document.querySelector(`output[for="${id}"]`);
-  const apply = () => { const v = parseFloat(el.value); if (out) out.textContent = v.toFixed(2); fn(v); };
+  const apply = () => { const v = parseFloat(el.value); if (out) out.textContent = v.toFixed(digits); fn(v); };
   el.addEventListener('input', apply); apply();
 };
 bind('roughness', (v) => { glass.roughness = v; });
-bind('transmission', (v) => { glass.transmission = v; });
-bind('ink', (v) => { uniforms.uInk.value = v; });
-bind('iridescence', (v) => { glass.iridescence = v; glass.sheen = 0.1 + v * 0.2; });
-bind('rim', (v) => { uniforms.uRim.value = v; });
+bind('thickness', (v) => { glass.thickness = v; });
+bind('ior', (v) => { glass.ior = v; });
+bind('dispersion', (v) => { glass.dispersion = v; }, 1);
+bind('milk', (v) => { glass.transmission = 1 - v; });
+bind('iridescence', (v) => { glass.iridescence = v; });
 bind('fringe', (v) => { lensPass.uniforms.uCA.value = v; });
 bind('grain', (v) => { lensPass.uniforms.uGrain.value = v; });
 $('autorotate').checked = !reduceMotion;
 $('autorotate').addEventListener('change', (e) => { controls.autoRotate = e.target.checked; });
+// Inner walls: back faces render into the transmission pass first, so light refracts twice (milkier, thicker look).
+$('inner').addEventListener('change', (e) => { glass.side = e.target.checked ? THREE.DoubleSide : THREE.FrontSide; glass.needsUpdate = true; if (shell) shell.visible = !e.target.checked; });
 $('callouts').addEventListener('change', (e) => { showCallouts = e.target.checked; });
 $('letters').addEventListener('change', (e) => { showLetters = e.target.checked; drawBackdrop(); });
 
@@ -547,10 +377,9 @@ async function loadFile(file) {
   if (!file) return;
   statusEl.textContent = `Reading ${file.name}…`;
   try {
-    const buf = await file.arrayBuffer();
-    const gltf = await loader.parseAsync(buf, '');
-    const parts = [];
+    const gltf = await loader.parseAsync(await file.arrayBuffer(), '');
     gltf.scene.updateMatrixWorld(true);
+    const parts = [];
     gltf.scene.traverse((o) => {
       if (!o.isMesh) return;
       const g = new THREE.BufferGeometry();
@@ -560,25 +389,18 @@ async function loadFile(file) {
       parts.push(g.index ? g.toNonIndexed() : g);
     });
     if (!parts.length) throw new Error('no meshes found');
-    const total = parts.reduce((s, g) => s + g.attributes.position.count, 0);
-    const arr = new Float32Array(total * 3);
+    const arr = new Float32Array(parts.reduce((s, g) => s + g.attributes.position.array.length, 0));
     let off = 0;
     for (const g of parts) { arr.set(g.attributes.position.array, off); off += g.attributes.position.array.length; }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
     geo.computeBoundingBox();
     const box = geo.boundingBox, c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
-    const k = 1.7 / Math.max(s.x, s.y, s.z);
+    const k = 1.9 / Math.max(s.x, s.y, s.z);
     geo.translate(-c.x, -c.y, -c.z); geo.scale(k, k, k);
-    const fin = finishGeometry(geo, null);
-    const bb = new THREE.Box3().setFromBufferAttribute(fin.attributes.position);
-    const sel = [];
-    for (let i = 0; i < 4; i++) {                                  // spread callouts over the front
-      const t = i / 3;
-      sel.push(v3(THREE.MathUtils.lerp(bb.min.x, bb.max.x, 0.35 + 0.1 * i), THREE.MathUtils.lerp(bb.max.y, bb.min.y, 0.2 + 0.6 * t), bb.max.z * 0.8));
-    }
-    setGeometry(fin, sel);
-    statusEl.textContent = `${file.name} · ${(fin.index.count / 3).toLocaleString()} tris`;
+    geo.computeVertexNormals();
+    setGeometry(geo, frontAnchors(geo));
+    statusEl.textContent = `${file.name} · ${(arr.length / 9).toLocaleString()} tris`;
   } catch (err) {
     statusEl.textContent = `Could not load ${file.name}: ${err.message}. Try an uncompressed .glb.`;
   }
@@ -608,21 +430,18 @@ document.fonts.load('100px "UnifrakturMaguntia"').then(drawBackdrop).catch(() =>
 
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
-  const t = clock.getElapsedTime();
-  lensPass.uniforms.uTime.value = reduceMotion ? 0 : t;
+  lensPass.uniforms.uTime.value = reduceMotion ? 0 : clock.getElapsedTime();
   controls.update();
   composer.render();
   updateHUD();
 });
 
 let skullLabel = '';
-setTimeout(() => {
-  const t0 = performance.now();
-  skullGeo = buildSkull();
-  setGeometry(skullGeo, skullAnchors);
-  skullLabel = `Procedural skull · ${(skullGeo.index.count / 3).toLocaleString()} tris`;
-  statusEl.textContent = skullLabel;
-  window.__ready = Math.round(performance.now() - t0);
-  window.__app = { camera, controls };
-}, 30);
+skullGeo = decodeSkull();
+skullAnchors = frontAnchors(skullGeo);
+setGeometry(skullGeo, skullAnchors);
+skullLabel = `Skull · ${(skullGeo.index.count / 3).toLocaleString()} tris · Babylon.js Assets, CC BY 4.0`;
+statusEl.textContent = skullLabel;
+window.__app = { camera, controls, glass };
+window.__ready = 1;
 </script>

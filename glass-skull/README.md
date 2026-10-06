@@ -1,21 +1,32 @@
 # Frosted Glass Skull
 
-A milky frosted-glass material with holographic edges, in two forms:
+A transparent frosted-glass skull that really refracts what sits behind it, in two forms:
 
 | File | What it is |
 |---|---|
-| `index.html` | Live Three.js scene you can rotate. It builds a procedural skull from a signed distance field (marching cubes), renders it with the glass material, and adds a chromatic-fringe and grain post pass, a blackletter and grid backdrop, and HUD callouts. You can load your own `.glb`. |
-| `frosted_glass_material.py` | Blender 4.2+ script that rebuilds the same material in Cycles and assigns it to the selected meshes. |
-| `src/template.html` | Page source. Run `python3 build.py` to embed the Blender script and write `index.html`. |
+| `index.html` | Live Three.js scene you can rotate. A real skull mesh is rendered with `MeshPhysicalMaterial` transmission, so the grey grid and the large blackletter letters behind it are bent, blurred and colour-split through the glass. You can load your own `.glb`. |
+| `frosted_glass_material.py` | Blender 4.2+ script that builds the same glass in Cycles and, optionally, a grey backdrop with big black letters for it to refract. |
+| `assets/skull.bin` | Packed skull mesh (from `assets/convert_skull.py`). |
+| `src/template.html` | Page source. Run `python3 build.py` to embed the Blender script and the mesh into `index.html`. |
 
-## Material recipe
+No colour is painted on the surface. The dark shapes inside the glass are the
+backdrop letters seen through it.
 
-| Layer | Three.js | Blender |
+## Glass recipe
+
+| Property | Three.js | Blender (Principled BSDF) |
 |---|---|---|
-| Frosted body | `MeshPhysicalMaterial` with transmission 0.82, roughness 0.45, ior 1.38 | Principled BSDF with Transmission 0.92, Roughness 0.42, IOR 1.45 |
-| Ink voids | Per-vertex cavity (SDF ambient-occlusion probe, or Laplacian curvature for an imported mesh) plus object-space fbm noise, thresholded with screen-space dither | Ambient Occlusion node plus Noise and White Noise, through a Color Ramp (milk → cyan → navy → black) |
-| Holographic sheen | `iridescence` 0.6 plus a lavender `sheen` | Thin Film thickness 420 nm, IOR 1.6, plus Sheen |
-| Violet rim | Fresnel emission added in `onBeforeCompile` | Layer Weight (Facing) driving Emission Strength |
-| Depth | `attenuationColor` / `attenuationDistance` | Volume Absorption |
-| Chromatic fringe | Post pass: radial RGB split plus a violet/cyan edge glow | Compositor Lens Distortion with Dispersion 0.035 |
-| Grain | Animated hash noise in the post pass, stronger in shadows | Cycles at 96 samples with denoising off |
+| Transparency | `transmission` 0.9 | Transmission Weight 1.0 |
+| Frost (blur of what is refracted) | `roughness` 0.22 | Roughness 0.28 |
+| Refraction | `ior` 1.55, `thickness` 2.4 | IOR 1.5 (real geometry thickness in Cycles) |
+| Colour fringes | `dispersion` 3.5 | Dispersion 0.08 |
+| Holographic sheen | `iridescence` 0.55, lavender `sheen` | Thin Film 380 nm, IOR 1.35, Sheen |
+| Milky scatter | transmission < 1 ("Milkiness") | Subsurface Weight 0.1 |
+| Grain | post pass | 128 samples, denoising off |
+
+## Credits
+
+Skull mesh: "skull" from [Babylon.js Assets](https://github.com/BabylonJS/Assets)
+(`meshes/skull.babylon`), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+`convert_skull.py` mirrors it into a right-handed frame, applies light Taubin
+smoothing, recomputes normals and quantises it.
