@@ -126,7 +126,7 @@
 <section class="specs" aria-label="效果拆解">
   <div>
     <h2>3D 轉向</h2>
-    <p>依指標在 hero 內的位置，左右轉約 <code>±28°</code>、上下仰俯約 <code>±16°</code>，每幀以 lerp 平滑跟上。上殼持續緩慢開合，氣泡往上飄。</p>
+    <p>以貝殼本身為中心計算指標方向：左右轉約 <code>±50°</code>、上下仰俯約 <code>±32°</code>。指標移動的速度會讓貝殼朝移動方向多傾一下，再彈回來。上殼持續緩慢開合，氣泡往上飄。</p>
   </div>
   <div>
     <h2>圓點像素化</h2>
@@ -241,6 +241,8 @@ function makeValve(sign) {
 
 const shell = new THREE.Group();          // follows the pointer
 shell.scale.setScalar(1.12);
+// YXZ: yaw happens around the world's vertical axis, so left/right reads as the shell turning toward you
+shell.rotation.order = 'YXZ';
 shell.rotation.set(-1.2, -0.28, 0);
 const body = new THREE.Group();           // centres the shell on its pivot
 body.position.set(0, 0, -0.75);
@@ -439,15 +441,24 @@ new ResizeObserver(resize).observe(hero);
 resize();
 
 /* ---------- pointer ---------- */
-const target = { x: 0, y: 0 };
+const target = { x: 0, y: 0 };           // pointer offset from the shell, -1..1
 const pointer = { x: -1, y: -1, has: false };
 const lastPointer = { x: -1, y: -1 };
+const shellScreen = { x: 0, y: 0 };      // shell centre in hero px, updated every frame
+const swing = { x: 0, y: 0 };            // extra lean from pointer speed
+const swingVel = { x: 0, y: 0 };
+const _v = new THREE.Vector3();
 
 hero.addEventListener('pointermove', (e) => {
   const rect = hero.getBoundingClientRect();
   const x = e.clientX - rect.left, y = e.clientY - rect.top;
-  target.x = (x / rect.width) * 2 - 1;
-  target.y = (y / rect.height) * 2 - 1;
+  const reach = Math.min(rect.width, rect.height) * 0.42;
+  target.x = THREE.MathUtils.clamp((x - shellScreen.x) / reach, -1, 1);
+  target.y = THREE.MathUtils.clamp((y - shellScreen.y) / reach, -1, 1);
+  if (pointer.has && !reduceMotion) {
+    swingVel.x += THREE.MathUtils.clamp((x - pointer.x) * 0.012, -0.5, 0.5);
+    swingVel.y += THREE.MathUtils.clamp((y - pointer.y) * 0.012, -0.5, 0.5);
+  }
   pointer.x = x; pointer.y = y;
   if (!pointer.has) { lastPointer.x = x; lastPointer.y = y; pointer.has = true; }
 });
@@ -490,11 +501,23 @@ function frame() {
   if (!visible) return;
   if (!reduceMotion) t += dt;
 
-  const ease = 1 - Math.pow(0.0015, dt);
-  shell.rotation.y += (-0.28 + target.x * 0.5 - shell.rotation.y) * ease;
-  shell.rotation.x += (-1.2 + target.y * 0.28 - shell.rotation.x) * ease;
-  shell.rotation.z = 0.05 * Math.sin(t * 0.7);
-  shell.position.y = 0.1 * Math.sin(t * 1.1);
+  // lean in the direction of travel: damped spring pulled back to rest
+  const k = 60, damp = 9;
+  swingVel.x += (-k * swing.x - damp * swingVel.x) * dt;
+  swingVel.y += (-k * swing.y - damp * swingVel.y) * dt;
+  swing.x = THREE.MathUtils.clamp(swing.x + swingVel.x * dt * 6, -0.45, 0.45);
+  swing.y = THREE.MathUtils.clamp(swing.y + swingVel.y * dt * 6, -0.45, 0.45);
+
+  const ease = 1 - Math.pow(0.0004, dt);
+  shell.rotation.y += (-0.2 + target.x * 0.88 + swing.x - shell.rotation.y) * ease;
+  shell.rotation.x += (-1.2 + target.y * 0.56 + swing.y * 0.8 - shell.rotation.x) * ease;
+  shell.rotation.z += (-swing.x * 0.35 + 0.04 * Math.sin(t * 0.7) - shell.rotation.z) * ease;
+  shell.position.x += (target.x * 0.18 - shell.position.x) * ease;
+  shell.position.y = 0.1 * Math.sin(t * 1.1) - target.y * 0.12;
+
+  _v.set(0, 0.2, 0).project(camera);
+  shellScreen.x = (_v.x * 0.5 + 0.5) * W;
+  shellScreen.y = (-_v.y * 0.5 + 0.5) * H;
   lid.rotation.x = -(0.3 + 0.12 * Math.sin(t * 0.9));
   pearl.scale.setScalar(1 + 0.04 * Math.sin(t * 2.0));
 
