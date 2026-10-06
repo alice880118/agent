@@ -35,14 +35,14 @@ BACKDROP_FONT = ""
 
 PARAMS = {
     "color":           (1.0, 1.0, 1.0, 1.0),
-    "roughness":       0.28,   # frost: how much the refracted backdrop blurs
+    "roughness":       0.15,   # frost: how much the refracted backdrop blurs
     "ior":             1.5,
     "transmission":    1.0,
     "dispersion":      0.08,   # Blender 4.2+: higher = stronger colour split
-    "milk":            0.1,    # subsurface weight: soft milky scatter
+    "milk":            0.04,   # subsurface weight: soft milky scatter
     "milk_radius":     (0.3, 0.3, 0.45),
     "coat":            0.35,
-    "coat_roughness":  0.3,
+    "coat_roughness":  0.08,
     "thin_film_nm":    380.0,  # Blender 4.2+ thin-film iridescence
     "thin_film_ior":   1.35,
     "sheen":           0.25,

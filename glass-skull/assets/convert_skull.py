@@ -16,7 +16,7 @@ import json, struct, sys
 import numpy as np
 
 src, dst = sys.argv[1], sys.argv[2]
-iters = int(sys.argv[3]) if len(sys.argv) > 3 else 12
+iters = int(sys.argv[3]) if len(sys.argv) > 3 else 20
 m = json.load(open(src))["meshes"][0]
 P = np.array(m["positions"], dtype=np.float64).reshape(-1, 3)
 F = np.array(m["indices"], dtype=np.int64).reshape(-1, 3)
