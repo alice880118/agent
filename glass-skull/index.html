@@ -1,0 +1,933 @@
+<title>Frosted Glass Skull</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-bleed WebGL stage, floating instrument panel top-right (bottom sheet on phones), HUD callouts over the render. */
+:root {
+  --paper: #e3e3e6;      /* studio grey, slight cool bias */
+  --ink: #121216;
+  --muted: #6c6c78;
+  --violet: #6b4cff;
+  --panel: rgba(240, 240, 244, 0.82);
+  --line: rgba(18, 18, 22, 0.14);
+  --font-display: "UnifrakturMaguntia", "Old English Text MT", "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body { background: var(--paper); color: var(--ink); font-family: var(--font-mono); font-size: 12px; overflow: hidden; }
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#stage canvas:active { cursor: grabbing; }
+#hud { position: fixed; inset: 0; pointer-events: none; width: 100%; height: 100%; }
+#hud text { font-family: var(--font-mono); font-size: 10.5px; fill: var(--ink); font-variant-numeric: tabular-nums; }
+
+.mast { position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); left: 16px; display: grid; gap: 2px; pointer-events: none; }
+.mast h1 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 34px; line-height: 1; letter-spacing: 0.01em; text-wrap: balance; }
+.mast p { margin: 0; color: var(--muted); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+.panel { position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); right: 16px; width: 272px; max-width: calc(100% - 32px); max-height: calc(100% - 32px); overflow: auto;
+  background: var(--panel); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid var(--line); border-radius: 4px; }
+.panel summary { list-style: none; cursor: pointer; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; letter-spacing: 0.08em; text-transform: uppercase; font-size: 10.5px; font-weight: 500; }
+.panel summary::-webkit-details-marker { display: none; }
+.panel summary::after { content: "+"; font-size: 14px; color: var(--muted); }
+.panel details[open] > summary::after { content: "–"; }
+.panel details + details { border-top: 1px solid var(--line); }
+.panel .body { padding: 2px 12px 12px; display: grid; gap: 10px; }
+.row { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
+.row label { color: var(--ink); }
+.row output { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
+.row input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--violet); margin: 0; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.checks label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.checks input { accent-color: var(--violet); margin: 0; }
+.btns { display: flex; flex-wrap: wrap; gap: 6px; }
+button, .filebtn { font: inherit; font-size: 11px; color: var(--ink); background: transparent; border: 1px solid var(--ink); border-radius: 2px; padding: 6px 9px; cursor: pointer; }
+button:hover, .filebtn:hover { background: var(--ink); color: var(--paper); }
+button:focus-visible, .filebtn:focus-within, summary:focus-visible, input:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+.filebtn input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.note { color: var(--muted); line-height: 1.5; margin: 0; }
+pre.py { margin: 0; max-height: 220px; overflow: auto; background: rgba(18,18,22,0.06); padding: 8px; font-size: 10px; line-height: 1.45; white-space: pre; border-radius: 2px; }
+#status { position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); color: var(--muted); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; pointer-events: none; }
+#drop { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(107, 76, 255, 0.12); border: 2px dashed var(--violet); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; pointer-events: none; }
+
+@media (max-width: 640px) {
+  .mast h1 { font-size: 26px; }
+  .panel { top: auto; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); left: 16px; right: 16px; width: auto; max-height: 46%; }
+  #status { bottom: auto; top: calc(74px + env(safe-area-inset-top, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<div id="stage"></div>
+<svg id="hud" aria-hidden="true"></svg>
+
+<header class="mast">
+  <h1>Frosted Glass Skull</h1>
+  <p>Drag to rotate · scroll to zoom</p>
+</header>
+
+<aside class="panel" aria-label="Material controls">
+  <details open>
+    <summary>Material</summary>
+    <div class="body">
+      <div class="row"><label for="roughness">Frost (roughness)</label><output for="roughness"></output><input id="roughness" type="range" min="0" max="1" step="0.01" value="0.45"></div>
+      <div class="row"><label for="transmission">Transmission</label><output for="transmission"></output><input id="transmission" type="range" min="0" max="1" step="0.01" value="0.82"></div>
+      <div class="row"><label for="ink">Ink voids</label><output for="ink"></output><input id="ink" type="range" min="0" max="1" step="0.01" value="0.6"></div>
+      <div class="row"><label for="iridescence">Iridescence</label><output for="iridescence"></output><input id="iridescence" type="range" min="0" max="1" step="0.01" value="0.6"></div>
+      <div class="row"><label for="rim">Violet rim</label><output for="rim"></output><input id="rim" type="range" min="0" max="1.5" step="0.01" value="0.5"></div>
+      <div class="row"><label for="fringe">Chromatic fringe</label><output for="fringe"></output><input id="fringe" type="range" min="0" max="1" step="0.01" value="0.35"></div>
+      <div class="row"><label for="grain">Grain</label><output for="grain"></output><input id="grain" type="range" min="0" max="1" step="0.01" value="0.5"></div>
+      <div class="checks">
+        <label><input id="autorotate" type="checkbox" checked> Auto-rotate</label>
+        <label><input id="callouts" type="checkbox" checked> Callouts</label>
+        <label><input id="letters" type="checkbox" checked> Blackletter</label>
+      </div>
+    </div>
+  </details>
+  <details>
+    <summary>Model</summary>
+    <div class="body">
+      <p class="note">The skull is generated in the browser. Load your own .glb (or drop it on the page) to see the material on it. Draco-compressed files are not supported.</p>
+      <div class="btns">
+        <label class="filebtn">Load .glb<input id="file" type="file" accept=".glb,.gltf,model/gltf-binary"></label>
+        <button id="reset" type="button">Use built-in skull</button>
+      </div>
+    </div>
+  </details>
+  <details>
+    <summary>Blender material</summary>
+    <div class="body">
+      <p class="note">Select your mesh in Blender 4.2+, open Scripting, paste and run. It builds the same look in Cycles: Principled glass with thin-film, AO-driven ink, violet rim, volume absorption, and a lens-dispersion fringe in the compositor.</p>
+      <div class="btns"><button id="copy" type="button">Copy Python script</button></div>
+      <pre class="py" id="py" tabindex="0">&quot;&quot;&quot;
+Frosted Holo Glass - Blender material setup
+===========================================
+
+Recreates the milky frosted-glass look from the skull references: translucent
+white glass, dark navy/black &quot;ink&quot; pooling in cavities with cyan bleed at the
+edges, violet rim light, thin-film iridescence, chromatic fringing and grain.
+
+Usage
+-----
+1. Select one or more mesh objects (e.g. a skull).
+2. Open the Scripting workspace, paste this file and press Run Script.
+
+Targets Blender 4.2+ and renders best in Cycles. Socket names changed between
+versions, so every input is set through a helper that tries the known names
+and skips anything that does not exist in your build.
+
+The ink mask uses the Ambient Occlusion node (cavities) plus object-space noise,
+so it adapts to any mesh. Tune the values in PARAMS below.
+&quot;&quot;&quot;
+
+import bpy
+
+MAT_NAME = &quot;Frosted Holo Glass&quot;
+
+# Set to False to only create/assign the material and leave your scene alone.
+SETUP_RENDER = True      # Cycles, grainy samples, AgX, chromatic-fringe compositor
+SETUP_STUDIO = True      # grey world, key light and violet rim light
+
+PARAMS = {
+    # Glass body
+    &quot;milk&quot;:            (0.93, 0.93, 0.96, 1.0),
+    &quot;roughness&quot;:       0.42,   # frost amount
+    &quot;ior&quot;:             1.45,
+    &quot;transmission&quot;:    0.92,
+    &quot;subsurface&quot;:      0.12,
+    &quot;coat&quot;:            0.35,
+    &quot;coat_roughness&quot;:  0.25,
+    # Holographic sheen
+    &quot;thin_film_nm&quot;:    420.0,  # Blender 4.2+ thin-film iridescence
+    &quot;thin_film_ior&quot;:   1.6,
+    &quot;sheen&quot;:           0.6,
+    &quot;rim&quot;:             (0.55, 0.35, 1.0, 1.0),
+    &quot;rim_strength&quot;:    0.6,
+    # Ink voids
+    &quot;ink_cyan&quot;:        (0.03, 0.35, 0.45, 1.0),
+    &quot;ink_navy&quot;:        (0.012, 0.014, 0.09, 1.0),
+    &quot;ink_black&quot;:       (0.003, 0.003, 0.008, 1.0),
+    &quot;ink_amount&quot;:      0.55,   # 0 = clear glass, 1 = heavy ink
+    &quot;ink_noise_scale&quot;: 2.2,
+    &quot;ao_distance&quot;:     0.25,   # in object units; raise for larger meshes
+    &quot;stipple&quot;:         0.12,   # dithered/grainy ink edges
+    # Volume
+    &quot;absorption&quot;:      (0.85, 0.82, 1.0, 1.0),
+    &quot;absorption_density&quot;: 0.6,
+}
+
+
+def sock(node, *names, out=False):
+    sockets = node.outputs if out else node.inputs
+    for name in names:
+        if name in sockets:
+            return sockets[name]
+    return None
+
+
+def setv(node, value, *names):
+    s = sock(node, *names)
+    if s is not None:
+        try:
+            s.default_value = value
+        except (TypeError, ValueError):
+            pass
+    return s
+
+
+def math(nodes, op, a=None, b=None, loc=(0, 0)):
+    n = nodes.new(&quot;ShaderNodeMath&quot;)
+    n.operation = op
+    n.location = loc
+    if a is not None and not hasattr(a, &quot;is_linked&quot;):
+        n.inputs[0].default_value = a
+    if b is not None and not hasattr(b, &quot;is_linked&quot;):
+        n.inputs[1].default_value = b
+    return n
+
+
+def build_material():
+    p = PARAMS
+    mat = bpy.data.materials.get(MAT_NAME) or bpy.data.materials.new(MAT_NAME)
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nodes, links = nt.nodes, nt.links
+    nodes.clear()
+
+    out = nodes.new(&quot;ShaderNodeOutputMaterial&quot;)
+    out.location = (1400, 0)
+
+    bsdf = nodes.new(&quot;ShaderNodeBsdfPrincipled&quot;)
+    bsdf.location = (1000, 0)
+    setv(bsdf, p[&quot;roughness&quot;], &quot;Roughness&quot;)
+    setv(bsdf, p[&quot;ior&quot;], &quot;IOR&quot;)
+    setv(bsdf, p[&quot;transmission&quot;], &quot;Transmission Weight&quot;, &quot;Transmission&quot;)
+    setv(bsdf, p[&quot;subsurface&quot;], &quot;Subsurface Weight&quot;, &quot;Subsurface&quot;)
+    setv(bsdf, (0.4, 0.35, 0.6), &quot;Subsurface Radius&quot;)
+    setv(bsdf, p[&quot;coat&quot;], &quot;Coat Weight&quot;, &quot;Clearcoat&quot;)
+    setv(bsdf, p[&quot;coat_roughness&quot;], &quot;Coat Roughness&quot;, &quot;Clearcoat Roughness&quot;)
+    setv(bsdf, p[&quot;sheen&quot;], &quot;Sheen Weight&quot;, &quot;Sheen&quot;)
+    setv(bsdf, p[&quot;rim&quot;], &quot;Sheen Tint&quot;)
+    setv(bsdf, p[&quot;thin_film_nm&quot;], &quot;Thin Film Thickness&quot;)
+    setv(bsdf, p[&quot;thin_film_ior&quot;], &quot;Thin Film IOR&quot;)
+    setv(bsdf, p[&quot;rim&quot;], &quot;Emission Color&quot;, &quot;Emission&quot;)
+    links.new(bsdf.outputs[0], out.inputs[&quot;Surface&quot;])
+
+    # --- Ink mask: cavity (AO) + object-space noise + stipple -------------
+    coord = nodes.new(&quot;ShaderNodeTexCoord&quot;)
+    coord.location = (-1200, 200)
+
+    noise = nodes.new(&quot;ShaderNodeTexNoise&quot;)
+    noise.location = (-950, 300)
+    setv(noise, p[&quot;ink_noise_scale&quot;], &quot;Scale&quot;)
+    setv(noise, 6.0, &quot;Detail&quot;)
+    setv(noise, 0.55, &quot;Roughness&quot;)
+    setv(noise, 0.3, &quot;Distortion&quot;)
+    links.new(coord.outputs[&quot;Object&quot;], noise.inputs[&quot;Vector&quot;])
+
+    ao = nodes.new(&quot;ShaderNodeAmbientOcclusion&quot;)
+    ao.location = (-950, 0)
+    ao.samples = 16
+    setv(ao, p[&quot;ao_distance&quot;], &quot;Distance&quot;)
+
+    stipple = nodes.new(&quot;ShaderNodeTexWhiteNoise&quot;)
+    stipple.location = (-950, -250)
+    stipple.noise_dimensions = &quot;3D&quot;
+    scale_uv = nodes.new(&quot;ShaderNodeVectorMath&quot;)
+    scale_uv.operation = &quot;SCALE&quot;
+    scale_uv.location = (-1100, -250)
+    setv(scale_uv, 400.0, &quot;Scale&quot;)
+    links.new(coord.outputs[&quot;Object&quot;], scale_uv.inputs[0])
+    links.new(scale_uv.outputs[0], stipple.inputs[&quot;Vector&quot;])
+
+    cavity = math(nodes, &quot;SUBTRACT&quot;, 1.0, None, (-700, 0))
+    links.new(sock(ao, &quot;AO&quot;, out=True), cavity.inputs[1])
+    cavity_w = math(nodes, &quot;MULTIPLY&quot;, None, 1.6, (-520, 0))
+    links.new(cavity.outputs[0], cavity_w.inputs[0])
+
+    noise_c = math(nodes, &quot;SUBTRACT&quot;, None, 0.5, (-700, 300))
+    links.new(sock(noise, &quot;Fac&quot;, out=True), noise_c.inputs[0])
+    noise_w = math(nodes, &quot;MULTIPLY&quot;, None, 1.2, (-520, 300))
+    links.new(noise_c.outputs[0], noise_w.inputs[0])
+
+    stip_c = math(nodes, &quot;SUBTRACT&quot;, None, 0.5, (-700, -250))
+    links.new(sock(stipple, &quot;Value&quot;, out=True), stip_c.inputs[0])
+    stip_w = math(nodes, &quot;MULTIPLY&quot;, None, p[&quot;stipple&quot;], (-520, -250))
+    links.new(stip_c.outputs[0], stip_w.inputs[0])
+
+    ink = math(nodes, &quot;ADD&quot;, None, None, (-340, 100))
+    links.new(cavity_w.outputs[0], ink.inputs[0])
+    links.new(noise_w.outputs[0], ink.inputs[1])
+    ink2 = math(nodes, &quot;ADD&quot;, None, None, (-180, 0))
+    links.new(ink.outputs[0], ink2.inputs[0])
+    links.new(stip_w.outputs[0], ink2.inputs[1])
+    ink3 = math(nodes, &quot;ADD&quot;, None, p[&quot;ink_amount&quot;] - 0.55, (-20, 0))
+    ink3.use_clamp = True
+    links.new(ink2.outputs[0], ink3.inputs[0])
+
+    ramp = nodes.new(&quot;ShaderNodeValToRGB&quot;)
+    ramp.location = (200, 150)
+    els = ramp.color_ramp.elements
+    els[0].position, els[0].color = 0.0, p[&quot;milk&quot;]
+    els[1].position, els[1].color = 0.42, p[&quot;milk&quot;]
+    for pos, col in ((0.5, p[&quot;ink_cyan&quot;]), (0.6, p[&quot;ink_navy&quot;]), (0.85, p[&quot;ink_black&quot;])):
+        e = els.new(pos)
+        e.color = col
+    links.new(ink3.outputs[0], ramp.inputs[&quot;Fac&quot;])
+    links.new(ramp.outputs[&quot;Color&quot;], bsdf.inputs[&quot;Base Color&quot;])
+
+    # Slightly rougher where the ink sits, like the dense sandblasted patches.
+    rough = nodes.new(&quot;ShaderNodeMapRange&quot;)
+    rough.location = (500, -100)
+    setv(rough, p[&quot;roughness&quot;], &quot;To Min&quot;)
+    setv(rough, min(1.0, p[&quot;roughness&quot;] + 0.2), &quot;To Max&quot;)
+    links.new(ink3.outputs[0], rough.inputs[&quot;Value&quot;])
+    links.new(rough.outputs[&quot;Result&quot;], bsdf.inputs[&quot;Roughness&quot;])
+
+    # --- Violet rim: facing -&gt; emission strength --------------------------
+    lw = nodes.new(&quot;ShaderNodeLayerWeight&quot;)
+    lw.location = (300, -350)
+    setv(lw, 0.35, &quot;Blend&quot;)
+    rim_pow = math(nodes, &quot;POWER&quot;, None, 2.5, (500, -350))
+    links.new(sock(lw, &quot;Facing&quot;, out=True), rim_pow.inputs[0])
+    rim_amt = math(nodes, &quot;MULTIPLY&quot;, None, p[&quot;rim_strength&quot;], (680, -350))
+    links.new(rim_pow.outputs[0], rim_amt.inputs[0])
+    em = sock(bsdf, &quot;Emission Strength&quot;)
+    if em is not None:
+        links.new(rim_amt.outputs[0], em)
+
+    # --- Volume: glass thickness reads as depth ---------------------------
+    vol = nodes.new(&quot;ShaderNodeVolumeAbsorption&quot;)
+    vol.location = (1000, -500)
+    setv(vol, p[&quot;absorption&quot;], &quot;Color&quot;)
+    setv(vol, p[&quot;absorption_density&quot;], &quot;Density&quot;)
+    links.new(vol.outputs[0], out.inputs[&quot;Volume&quot;])
+
+    # EEVEE refraction settings (names differ across versions).
+    for attr, val in ((&quot;surface_render_method&quot;, &quot;DITHERED&quot;),
+                      (&quot;use_raytrace_refraction&quot;, True),
+                      (&quot;use_screen_refraction&quot;, True),
+                      (&quot;blend_method&quot;, &quot;HASHED&quot;)):
+        try:
+            setattr(mat, attr, val)
+        except (AttributeError, TypeError):
+            pass
+    mat.diffuse_color = p[&quot;milk&quot;]
+    return mat
+
+
+def assign(mat):
+    count = 0
+    for ob in bpy.context.selected_objects:
+        if ob.type != &quot;MESH&quot;:
+            continue
+        if ob.data.materials:
+            ob.data.materials[0] = mat
+        else:
+            ob.data.materials.append(mat)
+        count += 1
+    return count
+
+
+def setup_render():
+    scene = bpy.context.scene
+    scene.render.engine = &quot;CYCLES&quot;
+    cy = scene.cycles
+    cy.samples = 96                 # low-ish on purpose: natural grain
+    cy.use_denoising = False
+    cy.transmission_bounces = 16
+    cy.max_bounces = 16
+    try:
+        scene.view_settings.view_transform = &quot;AgX&quot;
+        scene.view_settings.look = &quot;AgX - Medium High Contrast&quot;
+    except TypeError:
+        pass
+
+    # Chromatic fringe via Lens Distortion dispersion in the compositor.
+    try:
+        if hasattr(scene, &quot;compositing_node_group&quot;):          # Blender 5.0+
+            tree = scene.compositing_node_group
+            if tree is None:
+                tree = bpy.data.node_groups.new(&quot;Compositing&quot;, &quot;CompositorNodeTree&quot;)
+                scene.compositing_node_group = tree
+        else:
+            scene.use_nodes = True
+            tree = scene.node_tree
+        nodes = tree.nodes
+        rl = next((n for n in nodes if n.bl_idname == &quot;CompositorNodeRLayers&quot;), None) \
+            or nodes.new(&quot;CompositorNodeRLayers&quot;)
+        comp = next((n for n in nodes if n.bl_idname in
+                     (&quot;CompositorNodeComposite&quot;, &quot;NodeGroupOutput&quot;)), None)
+        lens = nodes.new(&quot;CompositorNodeLensdist&quot;)
+        lens.location = (rl.location.x + 300, rl.location.y)
+        setv(lens, 0.035, &quot;Dispersion&quot;)
+        setv(lens, -0.01, &quot;Distortion&quot;, &quot;Distort&quot;)
+        tree.links.new(rl.outputs[&quot;Image&quot;], lens.inputs[&quot;Image&quot;])
+        if comp is not None:
+            tree.links.new(lens.outputs[&quot;Image&quot;], comp.inputs[0])
+    except Exception as exc:  # compositor API differs; material still works
+        print(f&quot;[{MAT_NAME}] compositor skipped: {exc}&quot;)
+
+
+def setup_studio():
+    scene = bpy.context.scene
+    world = scene.world or bpy.data.worlds.new(&quot;World&quot;)
+    scene.world = world
+    world.use_nodes = True
+    bg = world.node_tree.nodes.get(&quot;Background&quot;)
+    if bg:
+        setv(bg, (0.78, 0.78, 0.8, 1.0), &quot;Color&quot;)
+        setv(bg, 0.8, &quot;Strength&quot;)
+
+    def area(name, loc, rot, energy, color, size):
+        light = bpy.data.objects.get(name)
+        if light is None:
+            data = bpy.data.lights.new(name, &quot;AREA&quot;)
+            light = bpy.data.objects.new(name, data)
+            scene.collection.objects.link(light)
+        light.location, light.rotation_euler = loc, rot
+        light.data.energy, light.data.color, light.data.size = energy, color, size
+
+    area(&quot;FHG_Key&quot;, (-3.0, -3.0, 4.0), (0.8, 0.0, -0.8), 600, (1.0, 0.98, 0.96), 3.0)
+    area(&quot;FHG_Rim&quot;, (2.5, 3.5, 1.5), (-1.3, 0.0, 2.6), 900, (0.6, 0.4, 1.0), 2.0)
+    area(&quot;FHG_Fill&quot;, (3.5, -2.0, 0.5), (1.4, 0.0, 1.0), 200, (0.7, 0.85, 1.0), 4.0)
+
+
+def main():
+    mat = build_material()
+    n = assign(mat)
+    if SETUP_RENDER:
+        setup_render()
+    if SETUP_STUDIO:
+        setup_studio()
+    print(f&quot;[{MAT_NAME}] ready; assigned to {n} selected mesh(es).&quot;)
+
+
+main()
+</pre>
+    </div>
+  </details>
+</aside>
+
+<div id="status">Casting glass…</div>
+<div id="drop" hidden>Drop .glb to apply the material</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const $ = (id) => document.getElementById(id);
+if (innerWidth <= 640) document.querySelector('.panel details').open = false;
+const statusEl = $('status');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- Renderer, scene, camera ---------- */
+const stage = $('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.0;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 60);
+camera.position.set(4.6, 0.5, 1.5);
+scene.add(camera);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.03).texture;
+scene.environmentIntensity = 0.9;
+
+const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(-3, 4, 3); scene.add(key);
+const rimL = new THREE.DirectionalLight(0x9a6bff, 1.0); rimL.position.set(2, 1.5, -4); scene.add(rimL);
+const fill = new THREE.DirectionalLight(0xbfe4ff, 0.8); fill.position.set(3, -2, 2); scene.add(fill);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.enablePan = false;
+controls.minDistance = 3;
+controls.maxDistance = 9;
+controls.autoRotate = !reduceMotion;
+controls.autoRotateSpeed = 0.9;
+controls.target.set(0, -0.05, 0);
+
+/* ---------- Backdrop: grid + blackletter, glued to the camera ---------- */
+const backCanvas = document.createElement('canvas');
+const backTex = new THREE.CanvasTexture(backCanvas);
+backTex.colorSpace = THREE.SRGBColorSpace;
+const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: backTex }));
+backdrop.position.z = -12;
+camera.add(backdrop);
+let showLetters = true;
+
+function drawBackdrop() {
+  const aspect = innerWidth / innerHeight;
+  const H = 1400, W = Math.round(H * aspect);
+  backCanvas.width = W; backCanvas.height = H;
+  const g = backCanvas.getContext('2d');
+  g.fillStyle = '#e3e3e6'; g.fillRect(0, 0, W, H);
+  const cell = H / 34;
+  g.strokeStyle = 'rgba(18,18,22,0.075)'; g.lineWidth = 1;
+  g.beginPath();
+  for (let x = (W / 2) % cell; x < W; x += cell) { g.moveTo(x + 0.5, 0); g.lineTo(x + 0.5, H); }
+  for (let y = (H / 2) % cell; y < H; y += cell) { g.moveTo(0, y + 0.5); g.lineTo(W, y + 0.5); }
+  g.stroke();
+  if (showLetters) {
+    g.fillStyle = '#121216';
+    g.textBaseline = 'alphabetic';
+    const s = H * 0.66;
+    g.font = `${s}px "UnifrakturMaguntia", serif`;
+    const cx = W / 2;
+    const glyphs = [['A', cx - H * 0.92, H * 0.4], ['T', cx + H * 0.3, H * 0.34], ['E', cx - H * 0.86, H * 1.12], ['Q', cx + H * 0.22, H * 1.16]];
+    for (const [ch, x, y] of glyphs) g.fillText(ch, x, y);
+  }
+  backTex.needsUpdate = true;
+  const dist = -backdrop.position.z;
+  const h = 2 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  backdrop.scale.set(h * aspect * 1.02, h * 1.02, 1);
+}
+
+/* ---------- The frosted holo glass material ---------- */
+const uniforms = {
+  uInk: { value: 0.55 },
+  uRim: { value: 0.5 },
+  uRimColor: { value: new THREE.Color('#8a5cff') },
+  uNavy: { value: new THREE.Color('#0b0e3c') },
+  uBlack: { value: new THREE.Color('#040409') },
+  uCyan: { value: new THREE.Color('#1b8fb0') },
+};
+
+const glass = new THREE.MeshPhysicalMaterial({
+  color: 0xf4f3fa,
+  roughness: 0.45,
+  metalness: 0,
+  transmission: 0.82,
+  thickness: 1.4,
+  ior: 1.38,
+  attenuationColor: new THREE.Color('#f0eeff'),
+  attenuationDistance: 2.2,
+  iridescence: 0.9,
+  iridescenceIOR: 1.55,
+  iridescenceThicknessRange: [180, 620],
+  sheen: 0.25,
+  sheenColor: new THREE.Color('#ddd6ff'),
+  sheenRoughness: 0.45,
+  clearcoat: 0.35,
+  clearcoatRoughness: 0.28,
+  specularIntensity: 0.9,
+});
+
+glass.onBeforeCompile = (shader) => {
+  Object.assign(shader.uniforms, uniforms);
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', `#include <common>
+      attribute float aCavity;
+      varying float vCavity;
+      varying vec3 vObj;`)
+    .replace('#include <begin_vertex>', `#include <begin_vertex>
+      vCavity = aCavity;
+      vObj = position;`);
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', `#include <common>
+      uniform float uInk, uRim;
+      uniform vec3 uRimColor, uNavy, uBlack, uCyan;
+      varying float vCavity;
+      varying vec3 vObj;
+      float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+      float vnoise(vec3 x) {
+        vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(h3(i), h3(i + vec3(1,0,0)), f.x), mix(h3(i + vec3(0,1,0)), h3(i + vec3(1,1,0)), f.x), f.y),
+                   mix(mix(h3(i + vec3(0,0,1)), h3(i + vec3(1,0,1)), f.x), mix(h3(i + vec3(0,1,1)), h3(i + vec3(1,1,1)), f.x), f.y), f.z);
+      }
+      float fbm(vec3 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++) { s += a * vnoise(p); p = p * 2.03 + 11.7; a *= 0.5; } return s; }
+      float hash2(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+      float gInk = 0.0;`)
+    .replace('#include <color_fragment>', `#include <color_fragment>
+      {
+        float n = fbm(vObj * 2.3 + vec3(0.0, 3.1, 0.0));
+        float blot = smoothstep(0.48, 0.66, n);                    // big patches on the cranium
+        float k = vCavity * 1.6 + blot * 0.85 + (n - 0.5) * 0.35;
+        float jitter = (hash2(gl_FragCoord.xy) - 0.5) * 0.14;      // stippled, dithered edges
+        float t = k + jitter - (1.0 - uInk) * 0.7 + 0.08;
+        gInk = smoothstep(0.3, 0.58, t);
+        float edge = smoothstep(0.22, 0.34, t) * (1.0 - smoothstep(0.34, 0.5, t));
+        vec3 inkCol = mix(uNavy, uBlack, smoothstep(0.55, 0.9, t));
+        diffuseColor.rgb = mix(diffuseColor.rgb, uCyan, edge * 0.3 * uInk);
+        diffuseColor.rgb = mix(diffuseColor.rgb, inkCol, gInk);
+      }`)
+    .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      {
+        float fres = pow(1.0 - saturate(dot(normalize(normal), normalize(vViewPosition))), 4.0);
+        totalEmissiveRadiance += uRimColor * fres * uRim * (1.0 - gInk * 0.7);
+      }`);
+};
+
+/* ---------- Procedural skull (signed distance field) ---------- */
+const v3 = (x, y, z) => [x, y, z];
+function len3(x, y, z) { return Math.sqrt(x * x + y * y + z * z); }
+function sdEll(px, py, pz, cx, cy, cz, rx, ry, rz) {
+  const x = px - cx, y = py - cy, z = pz - cz;
+  const k0 = len3(x / rx, y / ry, z / rz), k1 = len3(x / (rx * rx), y / (ry * ry), z / (rz * rz));
+  return k1 < 1e-6 ? -Math.min(rx, ry, rz) : k0 * (k0 - 1) / k1;
+}
+function sdCap(px, py, pz, a, b, r) {
+  const pax = px - a[0], pay = py - a[1], paz = pz - a[2];
+  const bax = b[0] - a[0], bay = b[1] - a[1], baz = b[2] - a[2];
+  const h = Math.max(0, Math.min(1, (pax * bax + pay * bay + paz * baz) / (bax * bax + bay * bay + baz * baz)));
+  return len3(pax - bax * h, pay - bay * h, paz - baz * h) - r;
+}
+function smin(a, b, k) { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; }
+function ssub(d, cut, k) { const h = Math.max(k - Math.abs(-cut - d), 0) / k; return Math.max(d, -cut) + h * h * k * 0.25; }
+function sdRBox(x, y, z, bx, by, bz, r) {
+  const qx = Math.abs(x) - bx, qy = Math.abs(y) - by, qz = Math.abs(z) - bz;
+  return len3(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, Math.max(qy, qz)), 0) - r;
+}
+// A band swept along a horizontal arc (dental arch, mandible body).
+function sdArc(px, py, pz, cz, R, tmax, yc, w, h, r, rise = 0, taper = 0) {
+  const th = Math.max(-tmax, Math.min(tmax, Math.atan2(px, pz - cz)));
+  const s = Math.sin(th), c = Math.cos(th);
+  const a = Math.abs(th) / tmax;
+  const qx = px - R * s, qy = py - (yc + rise * a), qz = pz - (cz + R * c);
+  return sdRBox(qx * s + qz * c, qy, qx * c - qz * s, w, h * (1 - taper * a), 0, r);
+}
+// Teeth: repeat one rounded tooth by angle along the arch.
+function sdTeeth(px, py, pz, cz, R, yTop, yBot, n, tmax, wid) {
+  if (pz < cz - 0.1 || py > Math.max(yTop, yBot) + 0.08 || py < Math.min(yTop, yBot) - 0.08) return 1;
+  const th = Math.atan2(px, pz - cz);
+  const step = (2 * tmax) / (n - 1);
+  const i = Math.max(0, Math.min(n - 1, Math.round((th + tmax) / step)));
+  let best = 1;
+  for (let j = i - 1; j <= i + 1; j++) {
+    if (j < 0 || j >= n) continue;
+    const t = -tmax + j * step, s = Math.sin(t), c = Math.cos(t);
+    const front = 1 - Math.abs(t) / tmax;               // incisors are narrower and taller
+    const tw = wid * (0.8 + 0.5 * (1 - front));
+    const ax = R * s, az = cz + R * c;
+    const d = sdCap(px, py, pz, v3(ax, yTop, az), v3(ax, yBot, az), tw);
+    best = Math.min(best, d);
+  }
+  return best;
+}
+
+function skullSDF(x, y, z) {
+  const ax = Math.abs(x);                                         // bilateral symmetry
+  let d = sdEll(x, y, z, 0, 0.26, -0.16, 0.56, 0.55, 0.7);         // cranium
+  d = smin(d, sdEll(x, y, z, 0, -0.1, -0.14, 0.47, 0.3, 0.52), 0.2);  // skull base
+  d = smin(d, sdEll(x, y, z, 0, 0.2, 0.22, 0.47, 0.5, 0.4), 0.15);    // forehead
+  d = smin(d, sdEll(x, y, z, 0, -0.18, 0.32, 0.4, 0.38, 0.37), 0.2);  // mid-face
+  d = smin(d, sdCap(x, y, z, v3(-0.33, 0.13, 0.55), v3(0.33, 0.13, 0.55), 0.065), 0.1); // brow ridge
+  d = smin(d, sdEll(ax, y, z, 0.29, -0.13, 0.42, 0.12, 0.1, 0.1), 0.08);                // cheekbones
+  d = smin(d, sdArc(x, y, z, 0.16, 0.33, 1.2, -0.44, 0.045, 0.05, 0.035), 0.1);           // maxilla
+  d = ssub(d, sdEll(ax, y, z, 0.185, -0.01, 0.64, 0.135, 0.125, 0.33), 0.04);             // orbits
+  d = ssub(d, sdEll(x, y, z, 0, -0.25, 0.7, 0.055, 0.1, 0.2), 0.03);                      // nasal aperture
+  d = ssub(d, sdEll(ax, y, z, 0.6, -0.04, 0.05, 0.12, 0.2, 0.3), 0.08);                  // temporal fossa
+  d = smin(d, sdCap(ax, y, z, v3(0.34, -0.15, 0.33), v3(0.47, -0.12, -0.06), 0.045), 0.04); // zygomatic arch
+  // mandible
+  let m = sdArc(x, y, z, 0.12, 0.34, 1.2, -0.72, 0.04, 0.06, 0.03, 0.05, 0.25);
+  m = smin(m, sdEll(x, y, z, 0, -0.76, 0.46, 0.09, 0.07, 0.06), 0.06);
+  m = smin(m, sdCap(ax, y, z, v3(0.31, -0.68, 0.24), v3(0.37, -0.66, -0.08), 0.055), 0.06);
+  m = smin(m, sdCap(ax, y, z, v3(0.38, -0.68, -0.08), v3(0.42, -0.24, -0.1), 0.065), 0.08);
+  m = smin(m, sdCap(ax, y, z, v3(0.36, -0.6, -0.02), v3(0.36, -0.38, 0.06), 0.03), 0.04);  // coronoid
+  d = smin(d, m, 0.03);
+  // teeth
+  d = Math.min(d, sdTeeth(x, y, z, 0.16, 0.32, -0.47, -0.56, 14, 1.15, 0.025));
+  d = Math.min(d, sdTeeth(x, y, z, 0.1, 0.355, -0.59, -0.66, 14, 1.1, 0.023));
+  return d;
+}
+
+function buildSkull(res = 112) {
+  const mc = new MarchingCubes(res, new THREE.MeshBasicMaterial(), false, false, 360000);
+  mc.isolation = 0;
+  const half = res / 2;
+  const f = mc.field;
+  for (let z = 0; z < res; z++) for (let y = 0; y < res; y++) for (let x = 0; x < res; x++) {
+    f[x + y * res + z * res * res] = -skullSDF((x - half) / half, (y - half) / half, (z - half) / half);
+  }
+  mc.update();
+  const n = mc.count;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(mc.geometry.attributes.position.array.slice(0, n * 3), 3));
+  mc.geometry.dispose();
+  return finishGeometry(geo, (p, nrm) => cavityFromSDF(p, nrm));
+}
+
+// Ambient-occlusion style probe along the normal: high in sockets and folds.
+function cavityFromSDF(p, n) {
+  let ao = 0, w = 1;
+  for (let i = 1; i <= 5; i++) {
+    const h = 0.05 * i;
+    ao += w * (h - skullSDF(p[0] + n[0] * h, p[1] + n[1] * h, p[2] + n[2] * h));
+    w *= 0.65;
+  }
+  return Math.min(1, Math.max(0, ao * 2.6));
+}
+
+function finishGeometry(geo, cavityFn) {
+  let g = mergeVertices(geo, 1e-5);
+  g.computeVertexNormals();
+  const pos = g.attributes.position, nor = g.attributes.normal;
+  const cav = new Float32Array(pos.count);
+  if (cavityFn) {
+    for (let i = 0; i < pos.count; i++) {
+      cav[i] = cavityFn([pos.getX(i), pos.getY(i), pos.getZ(i)], [nor.getX(i), nor.getY(i), nor.getZ(i)]);
+    }
+  } else {
+    curvatureCavity(g, cav);
+  }
+  g.setAttribute('aCavity', new THREE.BufferAttribute(cav, 1));
+  return g;
+}
+
+// For imported meshes: concavity from the Laplacian, smoothed into soft pools.
+function curvatureCavity(g, out) {
+  const pos = g.attributes.position, nor = g.attributes.normal, idx = g.index.array, n = pos.count;
+  const sum = new Float32Array(n * 3), cnt = new Uint16Array(n);
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t], b = idx[t + 1], c = idx[t + 2];
+    for (const [i, j, k] of [[a, b, c], [b, c, a], [c, a, b]]) {
+      sum[i * 3] += pos.getX(j) + pos.getX(k); sum[i * 3 + 1] += pos.getY(j) + pos.getY(k); sum[i * 3 + 2] += pos.getZ(j) + pos.getZ(k);
+      cnt[i] += 2;
+    }
+  }
+  let v = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    if (!cnt[i]) continue;
+    const dx = sum[i * 3] / cnt[i] - pos.getX(i), dy = sum[i * 3 + 1] / cnt[i] - pos.getY(i), dz = sum[i * 3 + 2] / cnt[i] - pos.getZ(i);
+    v[i] = dx * nor.getX(i) + dy * nor.getY(i) + dz * nor.getZ(i);
+  }
+  for (let it = 0; it < 12; it++) {                               // diffuse the signal
+    const acc = new Float32Array(n), c2 = new Uint16Array(n);
+    for (let t = 0; t < idx.length; t += 3) {
+      const a = idx[t], b = idx[t + 1], c = idx[t + 2];
+      acc[a] += v[b] + v[c]; acc[b] += v[a] + v[c]; acc[c] += v[a] + v[b];
+      c2[a] += 2; c2[b] += 2; c2[c] += 2;
+    }
+    for (let i = 0; i < n; i++) if (c2[i]) v[i] = 0.5 * v[i] + 0.5 * acc[i] / c2[i];
+  }
+  const sorted = Array.from(v).sort((a, b) => a - b);
+  const hi = sorted[Math.floor(n * 0.97)] || 1e-6;
+  for (let i = 0; i < n; i++) out[i] = Math.min(1, Math.max(0, v[i] / hi));
+}
+
+/* ---------- Mesh holder + HUD anchors ---------- */
+const holder = new THREE.Group();
+holder.rotation.x = 0.05;
+scene.add(holder);
+let mesh = null;
+let skullGeo = null;
+const skullAnchors = [v3(-0.2, 0.17, 0.66), v3(0.0, -0.12, 0.74), v3(0.08, -0.53, 0.47), v3(0.1, -0.8, 0.5)];
+let anchors = skullAnchors;
+
+function setGeometry(geo, anchorList) {
+  if (mesh) { holder.remove(mesh); if (mesh.geometry !== skullGeo) mesh.geometry.dispose(); }
+  mesh = new THREE.Mesh(geo, glass);
+  mesh.scale.setScalar(1.05);
+  holder.add(mesh);
+  anchors = anchorList;
+}
+
+/* ---------- Post: chromatic fringe + grain ---------- */
+const composer = new EffectComposer(renderer);
+composer.setPixelRatio(renderer.getPixelRatio());
+composer.setSize(innerWidth, innerHeight);
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new OutputPass());
+const lensPass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uCA: { value: 0.45 }, uGrain: { value: 0.5 }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(innerWidth, innerHeight) } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uCA, uGrain, uTime; uniform vec2 uRes; varying vec2 vUv;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    void main() {
+      vec2 d = vUv - 0.5; float r = length(d);
+      vec2 off = d * uCA * 0.022 * (0.35 + r * 2.0);
+      vec3 base = texture2D(tDiffuse, vUv).rgb;
+      vec3 inS = texture2D(tDiffuse, vUv - off).rgb, outS = texture2D(tDiffuse, vUv + off).rgb;
+      vec3 c = base;
+      c.r = mix(base.r, inS.r, 0.3);                 // gentle RGB split
+      c.b = mix(base.b, texture2D(tDiffuse, vUv - off * 1.6).b, 0.3);
+      float l0 = dot(base, vec3(0.299, 0.587, 0.114));
+      float edge = dot(inS - outS, vec3(0.299, 0.587, 0.114));
+      c += vec3(0.42, 0.22, 1.0) * max(edge, 0.0) * 0.55;   // violet on the bright side's halo
+      c += vec3(0.1, 0.55, 0.75) * max(-edge, 0.0) * 0.25;  // cyan bleed into the dark side
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      float g1 = hash(vUv * uRes + fract(uTime) * 91.0) - 0.5;
+      float g2 = hash(vUv * uRes * 0.5 + fract(uTime * 1.3) * 53.0) - 0.5;
+      c += (g1 * 0.75 + g2 * 0.25) * uGrain * 0.16 * (1.15 - l * 0.7);
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+});
+composer.addPass(lensPass);
+
+/* ---------- HUD callouts ---------- */
+const hud = $('hud');
+const NS = 'http://www.w3.org/2000/svg';
+const hudLine = document.createElementNS(NS, 'polyline');
+hudLine.setAttribute('fill', 'none'); hudLine.setAttribute('stroke', '#121216'); hudLine.setAttribute('stroke-width', '0.8'); hudLine.setAttribute('stroke-dasharray', '3 3');
+hud.appendChild(hudLine);
+const tail = document.createElementNS(NS, 'line');
+tail.setAttribute('stroke', '#121216'); tail.setAttribute('stroke-width', '0.8'); tail.setAttribute('stroke-dasharray', '3 3');
+hud.appendChild(tail);
+const marks = [];
+for (let i = 0; i < 4; i++) {
+  const r = document.createElementNS(NS, 'rect');
+  r.setAttribute('width', '9'); r.setAttribute('height', '9'); r.setAttribute('fill', 'none'); r.setAttribute('stroke', '#6b4cff'); r.setAttribute('stroke-width', '1.2');
+  const t1 = document.createElementNS(NS, 'text'), t2 = document.createElementNS(NS, 'text');
+  hud.append(r, t1, t2);
+  marks.push({ r, t1, t2 });
+}
+let showCallouts = true;
+const tmpV = new THREE.Vector3();
+function updateHUD() {
+  hud.style.display = showCallouts && mesh ? '' : 'none';
+  if (!showCallouts || !mesh) return;
+  const pts = [];
+  const dpr = renderer.getPixelRatio();
+  anchors.forEach((a, i) => {
+    tmpV.set(a[0], a[1], a[2]);
+    mesh.localToWorld(tmpV);
+    tmpV.project(camera);
+    const x = (tmpV.x * 0.5 + 0.5) * innerWidth, y = (-tmpV.y * 0.5 + 0.5) * innerHeight;
+    pts.push([x, y]);
+    const m = marks[i];
+    m.r.setAttribute('x', (x - 4.5).toFixed(1)); m.r.setAttribute('y', (y - 4.5).toFixed(1));
+    m.t1.setAttribute('x', (x + 8).toFixed(1)); m.t1.setAttribute('y', (y + 14).toFixed(1));
+    m.t2.setAttribute('x', (x + 8).toFixed(1)); m.t2.setAttribute('y', (y + 26).toFixed(1));
+    m.t1.textContent = Math.round(x * dpr); m.t2.textContent = Math.round(y * dpr);
+  });
+  hudLine.setAttribute('points', pts.map((p) => p.join(',')).join(' '));
+  const [lx, ly] = pts[pts.length - 1], [px, py] = pts[pts.length - 2];
+  const dx = lx - px, dy = ly - py, L = Math.hypot(dx, dy) || 1;
+  tail.setAttribute('x1', lx); tail.setAttribute('y1', ly);
+  tail.setAttribute('x2', lx + dx / L * 2000); tail.setAttribute('y2', ly + dy / L * 2000);
+}
+
+/* ---------- Controls panel ---------- */
+const bind = (id, fn) => {
+  const el = $(id), out = document.querySelector(`output[for="${id}"]`);
+  const apply = () => { const v = parseFloat(el.value); if (out) out.textContent = v.toFixed(2); fn(v); };
+  el.addEventListener('input', apply); apply();
+};
+bind('roughness', (v) => { glass.roughness = v; });
+bind('transmission', (v) => { glass.transmission = v; });
+bind('ink', (v) => { uniforms.uInk.value = v; });
+bind('iridescence', (v) => { glass.iridescence = v; glass.sheen = 0.1 + v * 0.2; });
+bind('rim', (v) => { uniforms.uRim.value = v; });
+bind('fringe', (v) => { lensPass.uniforms.uCA.value = v; });
+bind('grain', (v) => { lensPass.uniforms.uGrain.value = v; });
+$('autorotate').checked = !reduceMotion;
+$('autorotate').addEventListener('change', (e) => { controls.autoRotate = e.target.checked; });
+$('callouts').addEventListener('change', (e) => { showCallouts = e.target.checked; });
+$('letters').addEventListener('change', (e) => { showLetters = e.target.checked; drawBackdrop(); });
+
+$('copy').addEventListener('click', async () => {
+  const btn = $('copy'), text = $('py').textContent;
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied'; }
+  catch { const sel = getSelection(), r = document.createRange(); r.selectNodeContents($('py')); sel.removeAllRanges(); sel.addRange(r); btn.textContent = 'Selected · press Ctrl/⌘ C'; }
+  setTimeout(() => { btn.textContent = 'Copy Python script'; }, 2200);
+});
+
+/* ---------- GLB import ---------- */
+const loader = new GLTFLoader();
+async function loadFile(file) {
+  if (!file) return;
+  statusEl.textContent = `Reading ${file.name}…`;
+  try {
+    const buf = await file.arrayBuffer();
+    const gltf = await loader.parseAsync(buf, '');
+    const parts = [];
+    gltf.scene.updateMatrixWorld(true);
+    gltf.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', o.geometry.attributes.position.clone());
+      if (o.geometry.index) g.setIndex(o.geometry.index.clone());
+      g.applyMatrix4(o.matrixWorld);
+      parts.push(g.index ? g.toNonIndexed() : g);
+    });
+    if (!parts.length) throw new Error('no meshes found');
+    const total = parts.reduce((s, g) => s + g.attributes.position.count, 0);
+    const arr = new Float32Array(total * 3);
+    let off = 0;
+    for (const g of parts) { arr.set(g.attributes.position.array, off); off += g.attributes.position.array.length; }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    geo.computeBoundingBox();
+    const box = geo.boundingBox, c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
+    const k = 1.7 / Math.max(s.x, s.y, s.z);
+    geo.translate(-c.x, -c.y, -c.z); geo.scale(k, k, k);
+    const fin = finishGeometry(geo, null);
+    const bb = new THREE.Box3().setFromBufferAttribute(fin.attributes.position);
+    const sel = [];
+    for (let i = 0; i < 4; i++) {                                  // spread callouts over the front
+      const t = i / 3;
+      sel.push(v3(THREE.MathUtils.lerp(bb.min.x, bb.max.x, 0.35 + 0.1 * i), THREE.MathUtils.lerp(bb.max.y, bb.min.y, 0.2 + 0.6 * t), bb.max.z * 0.8));
+    }
+    setGeometry(fin, sel);
+    statusEl.textContent = `${file.name} · ${(fin.index.count / 3).toLocaleString()} tris`;
+  } catch (err) {
+    statusEl.textContent = `Could not load ${file.name}: ${err.message}. Try an uncompressed .glb.`;
+  }
+}
+$('file').addEventListener('change', (e) => loadFile(e.target.files[0]));
+$('reset').addEventListener('click', () => { if (skullGeo) { setGeometry(skullGeo, skullAnchors); statusEl.textContent = skullLabel; } });
+const drop = $('drop');
+addEventListener('dragover', (e) => { e.preventDefault(); drop.hidden = false; });
+addEventListener('dragleave', (e) => { if (!e.relatedTarget) drop.hidden = true; });
+addEventListener('drop', (e) => { e.preventDefault(); drop.hidden = true; loadFile(e.dataTransfer.files[0]); });
+
+/* ---------- Resize + loop ---------- */
+function onResize() {
+  camera.aspect = innerWidth / innerHeight;
+  // Keep the skull's width in frame on portrait screens.
+  camera.fov = camera.aspect < 1 ? THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(15)) * 0.8 / camera.aspect)) : 30;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  lensPass.uniforms.uRes.value.set(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio());
+  hud.setAttribute('viewBox', `0 0 ${innerWidth} ${innerHeight}`);
+  drawBackdrop();
+}
+addEventListener('resize', onResize);
+onResize();
+document.fonts.load('100px "UnifrakturMaguntia"').then(drawBackdrop).catch(() => {});
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const t = clock.getElapsedTime();
+  lensPass.uniforms.uTime.value = reduceMotion ? 0 : t;
+  controls.update();
+  composer.render();
+  updateHUD();
+});
+
+let skullLabel = '';
+setTimeout(() => {
+  const t0 = performance.now();
+  skullGeo = buildSkull();
+  setGeometry(skullGeo, skullAnchors);
+  skullLabel = `Procedural skull · ${(skullGeo.index.count / 3).toLocaleString()} tris`;
+  statusEl.textContent = skullLabel;
+  window.__ready = Math.round(performance.now() - t0);
+  window.__app = { camera, controls };
+}, 30);
+</script>
