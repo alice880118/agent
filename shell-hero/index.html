@@ -1,0 +1,521 @@
+<title>Pearl Shell Hero</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+  /* Layout: full-bleed hero, copy on the left, a WebGL canvas covering the whole hero
+     with the shell drawn on the right; a short spec strip underneath.
+     Single light look on purpose: the dot palette is tuned for a pale ground. */
+  :root {
+    --bg: #FFF8FB;
+    --line: #F7E6EE;
+    --ink: #4A1730;
+    --ink-soft: #8A5670;
+    --accent: #E0457F;
+    --pale: #FCE1EC;
+    --font-display: "Bricolage Grotesque", "Noto Sans TC", system-ui, sans-serif;
+    --font-body: "Noto Sans TC", system-ui, -apple-system, "PingFang TC", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  .hero {
+    position: relative;
+    height: 680px;
+    overflow: hidden;
+    touch-action: pan-y pinch-zoom;
+    background: var(--bg);
+  }
+  #stage {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .copy {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding-inline: clamp(16px, 5vw, 64px);
+    padding-block: 140px 0;
+    pointer-events: none;
+  }
+  .copy > * { pointer-events: auto; max-width: 30rem; }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 20px;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(36px, 5vw, 60px);
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    margin: 0 0 20px;
+    text-wrap: balance;
+  }
+  .lede { color: var(--ink-soft); margin: 0; max-width: 26rem; }
+  .hint {
+    margin-top: 32px;
+    display: inline-flex;
+    gap: 10px;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+    background: var(--pale);
+    border-radius: 999px;
+    padding: 6px 14px;
+  }
+  .hint i {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+  }
+  .specs {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding-inline: clamp(16px, 5vw, 64px);
+    padding-block: 40px 64px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 32px;
+    border-top: 1px solid var(--line);
+  }
+  .specs h2 {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 8px;
+  }
+  .specs p { margin: 0; font-size: 15px; color: var(--ink-soft); }
+  .specs code { font-family: var(--font-mono); font-size: 13px; color: var(--ink); }
+  @media (max-width: 860px) {
+    .hero { height: 760px; }
+    .copy { padding-block: 48px 0; }
+    .specs { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  }
+</style>
+
+<section class="hero" id="hero">
+  <canvas id="stage" aria-label="3D 貝殼像素動畫：貝殼隨滑鼠轉向，劃過時留下水流拖痕"></canvas>
+  <div class="copy">
+    <p class="eyebrow">Pearl Reserve · 深海典藏</p>
+    <h1>把珍貴的，安放在深海裡</h1>
+    <p class="lede">一枚在水中呼吸的扇貝，守著它的珍珠。移動滑鼠，它會轉身看你；劃過它，會留下一道水流。</p>
+    <p class="hint"><i></i>移動或拖曳試試看</p>
+  </div>
+</section>
+
+<section class="specs" aria-label="效果拆解">
+  <div>
+    <h2>3D 轉向</h2>
+    <p>依指標在 hero 內的位置，左右轉約 <code>±28°</code>、上下仰俯約 <code>±16°</code>，每幀以 lerp 平滑跟上。上殼持續緩慢開合，氣泡往上飄。</p>
+  </div>
+  <div>
+    <h2>圓點像素化</h2>
+    <p>Three.js 先把場景畫到離屏貼圖，再用後製 shader 以 <code>10px</code> 網格取樣，依亮度分成深粉、粉、淡粉、白四階，每格畫成圓點。</p>
+  </div>
+  <div>
+    <h2>滑鼠拖痕</h2>
+    <p>一張逐幀衰減的軌跡貼圖記錄指標位置與方向。拖痕內的圓點沿移動方向被抹開、轉成淡粉並閃爍；在背景上則留下一串小點，約 1 秒淡出。</p>
+  </div>
+</section>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const hero = document.getElementById('hero');
+const canvas = document.getElementById('stage');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const CELL_CSS = 10;          // grid cell size in CSS px
+const TRAIL_RADIUS = 2.6;     // brush radius in cells
+const TRAIL_DECAY = 0.955;    // per 60fps frame (~1s fade)
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
+renderer.setClearColor(0x000000, 0);
+
+/* ---------- 3D scene ---------- */
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 60);
+
+// Flat "toon" lighting so the brightness tiers stay predictable:
+// out = tone * (ambient + diffuse * N·L). The composite pass maps tone to colour.
+const LIGHT_DIR = new THREE.Vector3(-0.45, 0.55, 0.7).normalize();
+function toonMaterial({ tone = 1, vertexTone = false, ambient = 0.45, side = THREE.FrontSide } = {}) {
+  return new THREE.ShaderMaterial({
+    side,
+    vertexColors: vertexTone,
+    uniforms: { tone: { value: tone }, ambient: { value: ambient }, lightDir: { value: LIGHT_DIR } },
+    vertexShader: `
+      varying vec3 vN; varying float vTone;
+      uniform float tone;
+      void main(){
+        vN = normalize(mat3(modelMatrix) * normal);
+        #ifdef USE_COLOR
+          vTone = color.r * tone;
+        #else
+          vTone = tone;
+        #endif
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      varying vec3 vN; varying float vTone;
+      uniform float ambient; uniform vec3 lightDir;
+      void main(){
+        vec3 n = normalize(vN) * (gl_FrontFacing ? 1.0 : -1.0);
+        float l = ambient + (1.0 - ambient) * max(dot(n, lightDir), 0.0);
+        gl_FragColor = vec4(vec3(vTone * l), 1.0);
+      }`,
+  });
+}
+
+const THETA_MAX = 1.02;
+const RIBS = 15;
+
+function shellPoint(t, r, sign, lift = 0, ribs = true) {
+  const theta = (t * 2 - 1) * THETA_MAX;
+  const phase = (theta / THETA_MAX) * RIBS * Math.PI * 0.5;
+  const rib = ribs ? Math.cos(phase) : 0;
+  const R = 1.65 * (1 + 0.025 * rib * r);
+  const rr = r * R;
+  const k = theta / THETA_MAX;
+  let y = 0.5 * Math.pow(Math.sin(Math.PI * (r * 0.9 + 0.05)), 0.7) * (1 - 0.35 * k * k);
+  y += 0.07 * r * rib + lift;
+  return { x: rr * Math.sin(theta), y: y * sign, z: rr * Math.cos(theta), rib };
+}
+
+function makeValve(sign) {
+  const U = 96, V = 40;
+  const pos = [], col = [], idx = [];
+  for (let j = 0; j <= V; j++) {
+    for (let i = 0; i <= U; i++) {
+      const p = shellPoint(i / U, j / V, sign);
+      pos.push(p.x, p.y, p.z);
+      const r = j / V;
+      // narrow dark grooves between broad ribs; a white band inset from the lip
+      let g = 0.32 + 0.48 * THREE.MathUtils.smoothstep(p.rib, -0.75, -0.35);
+      if (r > 0.9 && r < 0.94) g = 2.4;
+      col.push(g, g, g);
+    }
+  }
+  for (let j = 0; j < V; j++) {
+    for (let i = 0; i < U; i++) {
+      const a = j * (U + 1) + i, b = a + 1, c = a + U + 1, d = c + 1;
+      if (sign > 0) idx.push(a, c, b, b, c, d);
+      else idx.push(a, b, c, b, d, c);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+
+  const valve = new THREE.Group();
+  valve.add(new THREE.Mesh(geo, toonMaterial({ vertexTone: true })));
+  valve.add(new THREE.Mesh(geo, toonMaterial({ tone: 0.3, side: THREE.BackSide })));
+
+  return valve;
+}
+
+const shell = new THREE.Group();          // follows the pointer
+shell.scale.setScalar(1.12);
+shell.rotation.set(-1.2, -0.28, 0);
+const body = new THREE.Group();           // centres the shell on its pivot
+body.position.set(0, 0, -0.75);
+shell.add(body);
+scene.add(shell);
+
+body.add(makeValve(-1));
+const lid = new THREE.Group();
+lid.add(makeValve(1));
+body.add(lid);
+
+// hinge "ears"
+const ear = new THREE.Mesh(
+  new THREE.BoxGeometry(1.3, 0.1, 0.34),
+  toonMaterial({ tone: 0.75 })
+);
+ear.position.set(0, 0, -0.08);
+body.add(ear);
+
+// pearl
+const pearl = new THREE.Mesh(
+  new THREE.SphereGeometry(0.34, 32, 24),
+  toonMaterial({ tone: 1.0, ambient: 0.7 })
+);
+pearl.position.set(0, 0.2, 1.62);
+body.add(pearl);
+
+// bubbles rising from the mouth of the shell
+const bubbleGeo = new THREE.SphereGeometry(1, 16, 12);
+const bubbleMat = toonMaterial({ tone: 0.65, ambient: 0.8 });
+const bubbles = [];
+for (let i = 0; i < 9; i++) {
+  const m = new THREE.Mesh(bubbleGeo, bubbleMat);
+  const b = { mesh: m, size: 0.05 + Math.random() * 0.08, speed: 0.35 + Math.random() * 0.35,
+              x: (Math.random() - 0.5) * 1.4, z: 0.2 + Math.random() * 0.6,
+              phase: Math.random() * Math.PI * 2, y: Math.random() * 3 };
+  m.scale.setScalar(b.size);
+  scene.add(m);
+  bubbles.push(b);
+}
+
+/* ---------- render targets ---------- */
+const sceneRT = new THREE.WebGLRenderTarget(2, 2, { depthBuffer: true });
+const trailOpts = { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: false };
+let trailA = new THREE.WebGLRenderTarget(2, 2, trailOpts);
+let trailB = new THREE.WebGLRenderTarget(2, 2, trailOpts);
+
+const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const quadGeo = new THREE.PlaneGeometry(2, 2);
+const vert = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+
+const trailMat = new THREE.ShaderMaterial({
+  uniforms: {
+    prev: { value: null }, a: { value: new THREE.Vector2() }, b: { value: new THREE.Vector2() },
+    dir: { value: new THREE.Vector2() }, power: { value: 0 }, decay: { value: TRAIL_DECAY },
+    radius: { value: TRAIL_RADIUS },
+  },
+  vertexShader: vert,
+  fragmentShader: `
+    varying vec2 vUv;
+    uniform sampler2D prev; uniform vec2 a, b, dir; uniform float power, decay, radius;
+    void main(){
+      vec4 p = texture2D(prev, vUv);
+      p.b *= decay;
+      vec2 c = gl_FragCoord.xy;
+      vec2 pa = c - a, ba = b - a;
+      float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-4), 0.0, 1.0);
+      float d = length(pa - ba * h);
+      float s = exp(-d * d / (radius * radius)) * power;
+      p.rg = mix(p.rg, dir, clamp(s * 1.5, 0.0, 1.0));
+      p.b = min(1.0, max(p.b, s));
+      gl_FragColor = p;
+    }`,
+});
+
+const hex = (h) => new THREE.Color().setStyle(h, THREE.NoColorSpace);
+const compMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tScene: { value: sceneRT.texture }, tTrail: { value: null },
+    res: { value: new THREE.Vector2() }, grid: { value: new THREE.Vector2() },
+    cell: { value: 10 }, px: { value: 1 }, time: { value: 0 },
+    cBg: { value: hex('#FFF8FB') }, cLine: { value: hex('#F7E6EE') },
+    cDeep: { value: hex('#E0457F') }, cMid: { value: hex('#F5A3C3') },
+    cEdge: { value: hex('#F0C2D6') }, cPale: { value: hex('#FCE1EC') },
+    cWhite: { value: hex('#FFFFFF') }, cDot: { value: hex('#F2A9C6') },
+  },
+  vertexShader: vert,
+  fragmentShader: `
+    uniform sampler2D tScene, tTrail;
+    uniform vec2 res, grid; uniform float cell, px, time;
+    uniform vec3 cBg, cLine, cDeep, cMid, cEdge, cPale, cWhite, cDot;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    vec4 sceneAt(vec2 cid){ return texture2D(tScene, (cid + 0.5) * cell / res); }
+    float disc(vec2 lp, float r){ float aa = 1.2 / cell; return 1.0 - smoothstep(r - aa, r + aa, length(lp)); }
+    // tier: 0 empty, 1 edge, 2 deep, 3 mid, 4 white
+    int tierOf(vec4 s){
+      if (s.a < 0.12) return 0;
+      if (s.a < 0.55) return 1;
+      float lum = dot(s.rgb, vec3(0.299, 0.587, 0.114)) / s.a;
+      if (lum > 0.80) return 4;
+      if (lum > 0.36) return 3;
+      return 2;
+    }
+    vec3 colorOf(int t){
+      if (t == 1) return cEdge;
+      if (t == 2) return cDeep;
+      if (t == 3) return cMid;
+      return cWhite;
+    }
+    void main(){
+      vec2 fc = gl_FragCoord.xy;
+      vec2 cid = floor(fc / cell);
+      vec2 lp = fract(fc / cell) - 0.5;
+
+      vec3 col = cBg;
+      if (fc.x - cid.x * cell < px) col = cLine;
+
+      vec4 tr = texture2D(tTrail, (cid + 0.5) / grid);
+      float s = clamp(tr.b, 0.0, 1.0);
+      vec2 dir = tr.rg;
+
+      vec4 here = sceneAt(cid);
+      int tier = tierOf(here);
+
+      if (s > 0.06) {
+        // smear: sample upstream along the motion direction, row-jittered
+        float len = s * (2.0 + 5.0 * hash(vec2(cid.y + cid.x * 0.02, floor(time * 8.0))));
+        vec4 up = sceneAt(floor(cid - dir * len + 0.5));
+        int upTier = tierOf(up);
+        bool onObject = (tier > 0) || (upTier > 0);
+        if (onObject) {
+          tier = upTier == 0 ? 5 : upTier;          // 5 = pale wash
+          float h = hash(cid * 1.73 + floor(time * 14.0));
+          if (tier != 4 && h < smoothstep(0.1, 0.55, s) * 0.9) tier = 5;
+          if (hash(cid + floor(time * 9.0) * 1.31) < 0.06 * s) tier = 6; // sparkle
+        } else if (hash(cid + floor(time * 10.0) * 0.77) < s * 0.85) {
+          col = mix(col, cDot, disc(lp, 0.17));     // trail dots on background
+        }
+      }
+
+      if (tier == 2 && hash(cid + floor(time * 0.6) * 3.7) < 0.012) tier = 4; // white specks
+
+      if (tier == 5) {
+        col = mix(col, cPale, disc(lp, 0.43));
+      } else if (tier == 6) {
+        col = mix(col, cPale, disc(lp, 0.43));
+        col = mix(col, cDeep, disc(lp, 0.22));
+        col = mix(col, cWhite, disc(lp, 0.08));
+      } else if (tier > 0) {
+        col = mix(col, colorOf(tier), disc(lp, 0.43));
+      }
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+});
+
+const quadScene = new THREE.Scene();
+const quad = new THREE.Mesh(quadGeo, compMat);
+quadScene.add(quad);
+
+/* ---------- sizing ---------- */
+let W = 1, H = 1, DPR = 1, CELL = 10;
+const grid = new THREE.Vector2(1, 1);
+
+function resize() {
+  const rect = hero.getBoundingClientRect();
+  W = Math.max(1, Math.round(rect.width));
+  H = Math.max(1, Math.round(rect.height));
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  CELL = Math.round(CELL_CSS * DPR);
+  renderer.setPixelRatio(DPR);
+  renderer.setSize(W, H, false);
+
+  const pw = Math.round(W * DPR), ph = Math.round(H * DPR);
+  sceneRT.setSize(Math.ceil(pw / 2), Math.ceil(ph / 2));
+  grid.set(Math.ceil(pw / CELL), Math.ceil(ph / CELL));
+  trailA.setSize(grid.x, grid.y);
+  trailB.setSize(grid.x, grid.y);
+  for (const rt of [trailA, trailB]) { renderer.setRenderTarget(rt); renderer.clear(); }
+  renderer.setRenderTarget(null);
+
+  const u = compMat.uniforms;
+  u.res.value.set(pw, ph);
+  u.grid.value.copy(grid);
+  u.cell.value = CELL;
+  u.px.value = Math.max(1, Math.round(DPR));
+
+  camera.aspect = W / H;
+  const wide = W >= 860;
+  camera.position.set(0, 2.2, wide ? 6.6 : 8.8 * THREE.MathUtils.clamp(560 / W, 1, 1.6));
+  camera.lookAt(0, 0.15, 0);
+  if (wide) camera.setViewOffset(W, H, -W * 0.2, 0, W, H);
+  else camera.setViewOffset(W, H, 0, -H * 0.2, W, H);
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(hero);
+resize();
+
+/* ---------- pointer ---------- */
+const target = { x: 0, y: 0 };
+const pointer = { x: -1, y: -1, has: false };
+const lastPointer = { x: -1, y: -1 };
+
+hero.addEventListener('pointermove', (e) => {
+  const rect = hero.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  target.x = (x / rect.width) * 2 - 1;
+  target.y = (y / rect.height) * 2 - 1;
+  pointer.x = x; pointer.y = y;
+  if (!pointer.has) { lastPointer.x = x; lastPointer.y = y; pointer.has = true; }
+});
+hero.addEventListener('pointerleave', () => { target.x = 0; target.y = 0; pointer.has = false; });
+
+/* ---------- loop ---------- */
+let visible = true;
+new IntersectionObserver(([e]) => { visible = e.isIntersecting; }).observe(hero);
+
+const clock = new THREE.Clock();
+let t = 0;
+
+function updateTrail(dt) {
+  const toCell = (x, y) => new THREE.Vector2(x * DPR / CELL, (H - y) * DPR / CELL);
+  let power = 0;
+  const a = toCell(lastPointer.x, lastPointer.y), b = toCell(pointer.x, pointer.y);
+  const dir = new THREE.Vector2();
+  if (pointer.has) {
+    const d = b.clone().sub(a);
+    const len = d.length();
+    power = Math.min(1, len / 0.9);
+    if (len > 1e-3) dir.copy(d).divideScalar(len);
+  }
+  const u = trailMat.uniforms;
+  u.prev.value = trailA.texture;
+  u.a.value.copy(a); u.b.value.copy(b);
+  u.dir.value.copy(dir);
+  u.power.value = power;
+  u.decay.value = Math.pow(TRAIL_DECAY, dt * 60);
+  quad.material = trailMat;
+  renderer.setRenderTarget(trailB);
+  renderer.render(quadScene, quadCam);
+  [trailA, trailB] = [trailB, trailA];
+  lastPointer.x = pointer.x; lastPointer.y = pointer.y;
+}
+
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (!visible) return;
+  if (!reduceMotion) t += dt;
+
+  const ease = 1 - Math.pow(0.0015, dt);
+  shell.rotation.y += (-0.28 + target.x * 0.5 - shell.rotation.y) * ease;
+  shell.rotation.x += (-1.2 + target.y * 0.28 - shell.rotation.x) * ease;
+  shell.rotation.z = 0.05 * Math.sin(t * 0.7);
+  shell.position.y = 0.1 * Math.sin(t * 1.1);
+  lid.rotation.x = -(0.3 + 0.12 * Math.sin(t * 0.9));
+  pearl.scale.setScalar(1 + 0.04 * Math.sin(t * 2.0));
+
+  for (const b of bubbles) {
+    b.y += b.speed * dt;
+    if (b.y > 2.6) { b.y = 0; b.x = (Math.random() - 0.5) * 1.4; }
+    b.mesh.position.set(b.x + 0.12 * Math.sin(t * 2 + b.phase), 0.2 + b.y + shell.position.y, b.z);
+    b.mesh.scale.setScalar(b.size * Math.min(1, b.y * 3, (2.6 - b.y) * 2));
+  }
+
+  renderer.setRenderTarget(sceneRT);
+  renderer.clear();
+  renderer.render(scene, camera);
+
+  updateTrail(dt);
+
+  compMat.uniforms.tTrail.value = trailA.texture;
+  compMat.uniforms.time.value = clock.elapsedTime;
+  quad.material = compMat;
+  renderer.setRenderTarget(null);
+  renderer.render(quadScene, quadCam);
+}
+frame();
+</script>
